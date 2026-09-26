@@ -10,7 +10,7 @@ full, masked copy of prod that you build in the sandbox, and a human approved th
 You write the rehearsal code yourself. This skill gives you plumbing (`scripts/`) and rules.
 
 People are watching live. Before each phase post one short status line ("Reading PR #2…", "Rehearsing on a masked
-copy of <N> rows…"). **Budget: about 12 tool calls in total.** Batch independent calls in one step (parallel tool calls).
+copy of <N> rows…"). **Budget: about 13 tool calls in total.** Batch independent calls in one step (parallel tool calls).
 Don't explore: every path, tool and data shape you need is below. Don't call `get_tool_output_schema`.
 
 ## Hard rules
@@ -29,6 +29,10 @@ Don't explore: every path, tool and data shape you need is below. Don't call `ge
 ## Procedure
 
 **Step 1 (one parallel batch):**
+- `exec` (**sandbox proof**, people watch this): run
+  `echo "SANDBOX host=$(hostname) user=$(whoami) cpus=$(nproc) kernel=$(uname -r)"; echo "credentials in sandbox env: $(env | grep -ciE 'key|token|secret|passw|database_url|pgwarden')"; ls /opt/tf/skills`
+  and post one status line: "Sandbox up (Daytona `<host>`): 0 credentials inside, so the code I write can only touch a
+  throwaway masked copy." If the count is not 0, say so plainly and stop.
 - `exec`: start Postgres in the background so it's warm later:
   `mkdir -p /tmp/dr && cd /tmp/dr && pip install -q "psycopg[binary]" sqlparse && (nohup python3 -c "import sys; sys.path.insert(0,'/opt/tf/skills/migration-rehearsal/scripts'); from pg_boot import boot; boot('warm')" > /tmp/dr/pgboot.log 2>&1 &)`
 - `github.pull_request_read` with `method: "get"` and with `method: "get_files"` (`owner`, `repo`, `pullNumber`).

@@ -1,103 +1,180 @@
 # Migration Rehearsal
 
-An agent that tests your database migration on a masked copy of real production data before it's allowed near production, fixes what breaks, and waits for a human before the one step you can't undo.
+**An agent that tests every database migration PR on a masked copy of real production data, fixes what breaks, and stops for a human before the one step you can't undo.** Built on [TrueForge](https://github.com/truefoundry/trueforge) for the TrueFoundry × Polaris "Agents That Act" hackathon.
 
-Built on [TrueForge](https://github.com/truefoundry/trueforge) for the TrueFoundry × Polaris "Agents That Act" hackathon.
+> CI said green. Prod lost 11 refunds.
 
-> CI passed on an empty database. Prod disagreed.
+![A real run in the dashboard: TrueForge steps on the left; the approval with review assist ("recommend: allow", zero rows changed) on the right](docs/images/run-trace.png)
 
-A two-line migration adds a unique index on `lower(email)` and renames `phone` to `mobile`. CI is green and review says LGTM. On prod it fails, because 14 customers signed up twice with different capitalization, and two app queries still read `phone`. The review tools we compared (Atlas, Squawk, Bytebase) lint the SQL text; none of them rehearse it on your data and write the fix. Migration Rehearsal does.
+## Writeup
 
-![The agent stops before the one irreversible step: TrueForge's approval card for apply_migration](docs/demo/approval-card.png)
+**The problem.** Migrations are tested in CI on an empty database, but they break on real data. In our demo app, [ledgerly](https://github.com/dipakkr/ledgerly) (a UPI payments ledger), a four-line PR "Enforce ledger integrity" passes CI. Deployed the usual way, statement by statement, it deletes 18 duplicate charges, **silently cascades into 11 customers' refund records (₹19,554)**, then crashes on statement 3 and leaves prod half-migrated. No test could see it: the bug is in the data, not the code.
 
-▶ [Watch a full run at 4× speed (68 s)](docs/demo/demo-4x.mp4): PR read → rehearsal fails → fix → rehearsal passes → approval → server-verified commit.
+**What the agent reaches.** Every PR runs our GitHub workflow, which starts a TrueForge session. The agent reads the PR, pulls a **masked, full copy** of prod into a Daytona sandbox, writes and runs its own rehearsal (applies the SQL, counts violations, replays the app's queries, checks invariants), writes a fix, rehearses again, posts the report on the PR and asks to apply.
 
-## What the agent does
+**Where it stops.** Applying to prod is gated. TrueForge pauses at `apply_migration` for a human. Our MCP server **pgwarden**, the only holder of the prod credential, then:
+- re-runs the exact rehearsed SQL in a transaction and commits only if the real effects equal what the human approved;
+- refuses DROP / TRUNCATE / RENAME even with approval;
+- refuses when prod drifted, the rehearsal is stale, or the change deletes rows of **protected tables** (payments, refunds).
 
-1. Reads the PR and the migration through the GitHub MCP server, and prod's schema through **pgwarden** (our MCP server, the only thing that holds the prod credential).
-2. Writes a rehearsal script and runs it in a TrueForge **Daytona sandbox**: it copies the affected tables (masked, full, no credentials), boots a throwaway Postgres, applies the migration, and replays the app's queries.
-3. Finds the failure, writes a fixed migration, and rehearses again until it passes.
-4. Posts the report on the PR, says in plain English what it's about to do, and calls `apply_migration`, which **pauses for a human**.
-5. On Allow, pgwarden re-runs the SQL in a transaction and commits only if the real effects equal what the human approved.
+Merging is blocked until the check is green.
 
-| Autonomous | Needs a human | Never, even with approval |
-|---|---|---|
-| Reads, sandbox work, rehearsal record, PR comment | `apply_migration` | DROP TABLE, TRUNCATE, DROP/RENAME COLUMN, GRANT/REVOKE, DELETE without WHERE, merge/push |
+**How TrueForge is used.**
+- The agent runtime and model loop.
+- The Code Mode sandbox on Daytona, holding **zero credentials** (proven on each run).
+- MCP connections with vaulted tokens.
+- The human approval gate, with durable pause and resume.
+- A git-pinned skill.
+- The sessions API, which drives CI status and our trace dashboard.
 
-Details and threat model: [SAFETY.md](SAFETY.md). Every edge case we handle, mapped to Atlas/Squawk/Bytebase categories with evidence: [docs/EDGE_CASES.md](docs/EDGE_CASES.md).
+**Real vs mocked.** Everything runs for real: TrueForge, Claude Sonnet 5, Daytona, GitHub PRs, Actions, statuses and branch protection, Postgres and the applies. Only "prod" is simulated: a local Postgres with generated, deterministic data.
 
-**Try to break it yourself:** `npm run guardrails` attacks pgwarden live (drop a table, sneak in a rename, fake or failed rehearsal, SQL changed after testing, understated effects) and proves prod's schema fingerprint is unchanged afterwards.
+**Known limits.** The agent's fixes vary between runs. Before protected tables existed, two destructive fixes were approved in testing. Effects count rows and schema, not changed values. Full-table copies only suit demo scale. One self-hosted runner means jobs queue.
 
-![Architecture](docs/architecture.svg)
+---
+
+## How it works
+
+```
+ developer opens / updates a PR
+        │
+        ▼
+ GitHub Actions (self-hosted runner next to TrueForge)          PR check: "Migration Rehearsal / prod data"
+   ci/rehearse-pr.mjs ── no migration changes? ── ✅ pass in seconds
+        │ migration changed
+        ▼
+ TrueForge session  (agent: migration-rehearsal-<project>, Claude Sonnet 5)
+   ├─ GitHub MCP ─────────── read the PR and files, post the report
+   ├─ Daytona sandbox ────── agent's own Python: throwaway Postgres + masked prod copy
+   │     (0 credentials)       apply SQL · count violations · PREPARE app queries · diff effects
+   │                           v1 fails → write fix → v2 passes
+   └─ pgwarden MCP ───────── describe / profile / masked export / record_rehearsal
+                              apply_migration ──► ⏸ TrueForge approval card (human: Allow / Deny)
+                                      │ Allow
+                                      ▼
+                 pgwarden: policy · rehearsal hash · drift · lock · backup ·
+                 run in a transaction · protected tables · actual == approved ? COMMIT : ROLLBACK
+                                      │
+                                      ▼
+                 PR check ✅ "applied and verified"  (or ❌ denied / refused, prod unchanged)
+```
+
+| | Autonomous | Needs a human | Never, even with approval |
+|---|---|---|---|
+| **What** | Reading the PR and schema, masked export, sandbox rehearsals, fixes, the PR report | `apply_migration` | DROP TABLE, TRUNCATE, DROP/RENAME COLUMN, GRANT/REVOKE, DELETE without WHERE, deleting rows of protected tables, applying SQL that wasn't rehearsed byte for byte |
+
+Threat model and every refusal code: [SAFETY.md](SAFETY.md). Edge cases compared with Atlas, Squawk and Bytebase: [docs/EDGE_CASES.md](docs/EDGE_CASES.md).
+
+### See it
+
+**The app.** [ledgerly](https://github.com/dipakkr/ledgerly), a UPI payments ledger with a live ops dashboard (30,055 payments, 427 refunds, 18 double charges).
+![ledgerly dashboard](docs/images/ledgerly-ui.png)
+
+**One real run, end to end** (session `01m3ep0n5yeh…`, triggered by a push to ledgerly PR #1). TrueForge ran the agent in this order:
+1. sandbox proof;
+2. masked export of 30,055 payments;
+3. v1 of the PR's SQL fails (37 orphan payments, 64 without a merchant, 18 payments + 11 refunds would be deleted);
+4. v2 fix passes with zero row changes;
+5. approval, and pgwarden commits 0007 with effects matching exactly.
+
+This is the trace at the top of this page. The **attempts** row reads `attempt 1 fail · payments -18, refunds -11` → `attempt 2 pass · all 0`.
+
+**Projects.** Every onboarded repo with live health, plus onboarding from the UI.
+![Projects page](docs/images/projects.png)
+
+### What TrueForge does and what we built
+
+| TrueForge (the harness) | Our code (the domain) |
+|---|---|
+| Runs the agent: model calls, tool routing, 60-step budget | `skills/migration-rehearsal/`: the procedure and rules, plus sandbox helpers |
+| Code Mode sandbox on Daytona; `call_tool` bridge so sandbox code reaches MCP tools without credentials | `pgwarden/`: the MCP server that holds the prod credential, masks PII and gates the apply |
+| MCP server registry and token vault (GitHub, pgwarden) | `agent/*.agent.json`: agent spec with `require_approval_for_tools: ["apply_migration"]` |
+| Human approval: the pause, the card, and resuming with the decision | `ci/rehearse-pr.mjs`: starts sessions from CI and mirrors them as PR statuses and a job summary |
+| Sessions and events API | `viewer/`: read-only trace dashboard, projects, onboarding |
+
+### A product, not a script
+
+- **Onboard any repo** with `npm run onboard -- --project <name> --repo <owner/app>`, or the **Projects** page in the dashboard. The steps:
+  1. check the prod database;
+  2. **PII scan** that suggests masking;
+  3. register the project's own pgwarden and agent in TrueForge (the approval gate is enforced, and it fails closed);
+  4. open a PR adding the workflow to the app repo;
+  5. make the check **required** on the default branch (admins included);
+  6. check the self-hosted runner.
+- **Per-project isolation**: each project has its own pgwarden (port, database, masking rules, audit log, protected tables) and its own agent.
+- **Review assist** on every approval: a plain-English reading of each statement, risk flags and a recommendation (allow / review / deny), computed from the SQL and effects rather than written by the agent.
+- **Dashboard** (`http://localhost:8795`): runs, traces, approvals and projects, with a live trace linked from every PR check.
 
 ## Quickstart
 
-**You need:** Node 22.14+, the GitHub CLI (`gh`, logged in), a Postgres 16 to play "prod" (local Docker or [Neon](https://neon.tech) free tier), a [Daytona](https://daytona.io) API key with **`write:sandboxes`, `write:snapshots` and `delete:snapshots`**, and one model key: TrueFoundry AI Gateway, OpenAI, or Anthropic.
+**You need:**
+- Node 22.14+
+- the GitHub CLI (`gh`, logged in) and SSH access to GitHub
+- Docker, or any Postgres 16
+- a [Daytona](https://daytona.io) API key with `write:sandboxes`, `write:snapshots` and `delete:snapshots`
+- one model key: Anthropic, OpenAI, or TrueFoundry AI Gateway
 
 ```bash
 git clone https://github.com/<you>/truefoundry-hackathon && cd truefoundry-hackathon
-cp .env.example .env          # fill in DATABASE_URL, keys, SHOPKART_REPO=<you>/shopkart
+cp .env.example .env            # keys, PGWARDEN_TOKEN, PGWARDEN_MASK_KEY, SKILL_REPO_URL + SKILL_REF (a commit SHA)
 npm install
-# no Postgres handy? docker run -d --name dr-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=shopkart -p 55432:5432 postgres:16
-npm run seed                  # loads the demo "prod" data (5,014 users, 20,000 orders)
-npm run demo-pr               # creates <you>/shopkart and opens the demo PRs (#1, #2)
+docker run -d --name dr-pg -e POSTGRES_PASSWORD=dev -p 55432:5432 postgres:16
 
-# terminal 1
-npm run trueforge                     # TrueForge on http://localhost:8790 (allows it to reach pgwarden on localhost)
-# terminal 2
-npm run pgwarden                      # pgwarden MCP on http://localhost:8787/mcp
-# terminal 3
-npm run setup                 # registers model, sandbox, MCP servers, skill and agents in TrueForge
-npm run doctor                # checks everything and tells you what's missing
+# terminal 1: TrueForge on :8790 (allowed to reach MCP servers on localhost)
+npm run trueforge
+# terminal 2: base setup: model, Daytona sandbox, GitHub MCP, skill (npm run seed + npm run pgwarden first for the bundled demo DB)
+npm run setup && npm run doctor
 ```
 
-Open http://localhost:8790, pick the **migration-rehearsal** agent and send:
-
-> Rehearse PR #1 in `<you>/shopkart` against prod before we merge. If it's safe, apply it.
-
-Run `npm run reset` between runs to restore the demo data.
-
-## Run it from GitHub CI (no chat needed)
-
-Every PR that changes `migrations/**` can start a rehearsal automatically. See [`ci/rehearse-pr.mjs`](ci/rehearse-pr.mjs)
-and the workflow in the demo repo: [`shopkart/.github/workflows/migration-rehearsal.yml`](https://github.com/dipakkr/shopkart/blob/main/.github/workflows/migration-rehearsal.yml).
-
+**Connect the demo app, ledgerly:**
+```bash
+git clone https://github.com/<you>/ledgerly ../ledgerly && (cd ../ledgerly && cp .env.example .env && npm install && npm run reset && npm start &)
+echo 'LEDGERLY_DATABASE_URL=postgres://postgres:dev@localhost:55432/ledgerly' >> .env
+npm run onboard -- --project ledgerly --repo <you>/ledgerly --db-env LEDGERLY_DATABASE_URL
+npm run pgwarden:project -- ledgerly     # its own pgwarden on :8788 (masking + protected tables)
+npm run onboard -- --project ledgerly    # re-run: every step green; merge the workflow PR it opened
+node viewer/server.mjs                   # dashboard on :8795 (Projects page shows health)
 ```
-PR opened / updated  →  GitHub Actions job on a self-hosted runner next to TrueForge  →  TrueForge starts migration-rehearsal
-PR status:  pending "Rehearsing…"  →  pending "Waiting for human approval in TrueForge"  →  ✅ applied / ❌ denied or refused
-```
+Register a self-hosted runner for the app repo with the `migration-rehearsal` label (onboarding prints the exact commands). Then open a PR that changes `migrations/`. The check turns yellow, a session appears in TrueForge, and the approval card waits for you.
 
-- The runner only makes outgoing connections to GitHub, so TrueForge is never exposed to the internet.
-- The human approval stays in TrueForge's UI (Allow, or Deny with a reason). CI only starts the run and mirrors its state.
-- Safety for a public repo: the job skips PRs from forks, and fork PRs need maintainer approval before any workflow runs.
-- Set up a runner: `gh api -X POST repos/<you>/shopkart/actions/runners/registration-token`, then GitHub's `config.sh --labels migration-rehearsal` and `run.sh`.
-- Trigger by hand: `gh workflow run migration-rehearsal.yml -R <you>/shopkart -f pr=2`.
+Reset ledgerly's prod between runs with `cd ../ledgerly && npm run reset`. To see the damage without the harness: `npm run deploy:unsafe -- migrations/0007_….sql` in ledgerly.
 
 ## Tested
 
-- **Fresh clone, README only** (26 Sep 2026, macOS, Node 25): `git clone` → `.env` → `npm install` → `seed` → `trueforge` + `pgwarden` → `setup` (all green) → `doctor` (nothing to fix) → full rehearsal ending in a server-verified commit in 190 s.
-- **Automated runs** (`npm run e2e`, real agent, real sandbox, real approval events): see [docs/demo/reliability.md](docs/demo/reliability.md).
-- **pgwarden:** 43 tests (golden effects, masking properties, schema round-trip, every refusal code).
+- **pgwarden:** 61 tests covering golden effects, masking, schema round-trip, drift, deploy lock, backups, every refusal code, and protected tables. **Viewer:** 23 tests (event mapping, dashboard, review assist). Run them with `npm --prefix pgwarden test` and `node --test viewer/test/*.test.mjs`.
+- **Live runs:** the first demo app went 13/13 end to end ([docs/demo/reliability.md](docs/demo/reliability.md)). On ledgerly, every CI-triggered run reached the approval card, and the fix quality varied:
 
-## How it's built
+  | ledgerly run | Agent's fix | Card | Outcome |
+  |---|---|---|---|
+  | before protected tables | deleted duplicates, orphans and no-merchant payments | payments −119, refunds −11 | approved in testing, applied exactly as shown |
+  | before protected tables | `NOT VALID` constraints, but the duplicate delete still cascaded | payments −18, refunds −11 | approved in testing |
+  | **with protected tables** | `NOT VALID` FK and CHECK, partial unique index; flagged old bot comments as possible injection | **all 0** | ✅ applied, PR mergeable |
 
-| Part | What it is |
+- `npm run guardrails`: 7 live attacks on pgwarden (lying about effects, swapped SQL, fake or failed rehearsals, DROP TABLE, prod drift), all refused, with prod proven unchanged.
+
+## Repository layout
+
+| Path | What it is |
 |---|---|
-| `pgwarden/` | TypeScript MCP server (Streamable HTTP, bearer auth). Six tools; `apply_migration` is the only one that changes prod and is gated. Masking, effects engine, statement policy. |
-| `skills/migration-rehearsal/` | Git-backed TrueForge skill: the procedure the agent follows, plus two plumbing helpers for the sandbox (`pg_boot.py`, `effects.py`). The agent writes the rehearsal code itself each run. |
-| `agent/` | TrueForge agent specs: `migration-rehearsal` and a `naive` variant with no safety instructions (used to show the server holds on its own). |
-| `seed/` | Deterministic demo data with the planted problems. |
-| `scripts/` | `setup`, `doctor`, `reset`, `demo-pr`, `e2e` (automated runs through the TrueForge SDK). |
-| `fixtures/effects-golden.json` | The effects format both the sandbox and the server must produce. |
+| `pgwarden/` | TypeScript MCP server (Streamable HTTP, bearer auth): masked export, statement policy, effects engine, gated apply, drift, lock, backups, protected tables, `analyze_migration` |
+| `skills/migration-rehearsal/` | Git-backed TrueForge skill: procedure, references, sandbox helpers (`pg_boot.py`, `effects.py`, `sources.py`) |
+| `agent/` | Agent specs: `migration-rehearsal` and a `naive` control agent with no safety instructions |
+| `projects/` | One config per onboarded app repo |
+| `ci/` | `rehearse-pr.mjs` (CI entry) and the workflow template installed by onboarding |
+| `scripts/` | `onboard`, `pgwarden:project`, `setup`, `doctor`, `reset`, `guardrails`, `e2e`, `trueforge` |
+| `viewer/` | Dashboard: traces, runs, approvals with review assist, projects and onboarding |
+| `seed/`, `fixtures/` | The first demo app's data (shopkart) and the golden effects format |
+| `docs/` | Contracts, edge cases, plan, demo material |
 
 ## Troubleshooting
 
-- **Daytona setup fails:** the API key needs Snapshots write permission. The first setup builds a snapshot and takes a few minutes.
-- **GitHub:** TrueForge's GitHub connector uses a token. `setup` takes `GITHUB_TOKEN` from `.env`, or falls back to `gh auth token`. For anything beyond a demo, use a fine-grained PAT limited to the shopkart repo.
-- **`Outbound URL blocked for host "localhost"`:** start TrueForge with `npm run trueforge`, which sets `OUTBOUND_URL_ALLOWED_HOSTS`.
-- **Agent can't reach pgwarden:** `npm run pgwarden` must be running; `npm run doctor` checks it.
-- **Numbers don't match after a run:** `npm run reset`.
+- **`Outbound URL blocked for host "localhost"`**: start TrueForge with `npm run trueforge`.
+- **MCP name rejected**: TrueForge accepts lowercase names with hyphens; onboarding uses `pgwarden-<project>`.
+- **Workflow PR fails with 404**: writing `.github/workflows` needs the `workflow` scope through the API; onboarding pushes over SSH instead, so make sure `git@github.com` works.
+- **PR check stuck at "expected"**: the app repo's runner is offline or busy. Jobs run one at a time per runner.
+- **`REHEARSAL_STALE` after Allow**: approvals must happen within 30 minutes of the rehearsal. Push again to re-rehearse.
+- **Numbers don't match**: reset the app's prod (`npm run reset` in ledgerly).
 
-## AI assistance
+## Licence and AI assistance
 
-This project was built with Claude Code (Anthropic). The team designed the idea, architecture, safety model and contracts; Claude Code helped write the plan, the code and the docs under that direction. We can explain every part of the architecture.
+MIT. Built with Claude Code (Anthropic): the team designed the idea, architecture, safety model and contracts, and Claude Code helped write the code and docs under that direction.

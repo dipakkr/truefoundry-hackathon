@@ -58,8 +58,6 @@ TrueForge's own approval card, pausing the run until a human decides:
 | PII leaving prod (5 columns masked); 0 credentials in the sandbox | Two applies at once: `APPLY_IN_PROGRESS`; backup before every apply |
 
 ## Known limits
-- The agent's fixes vary between runs. Before protected tables existed, two destructive fixes were approved in testing.
-- Effects count rows and schema, not changed values.
-- Full-table copies suit demo scale only.
-- One runner per repo, so jobs queue.
-- An applied fix isn't yet written back to the PR's migration file.
+- **Fix quality varies between runs.** The approval card, the independent review and protected tables make an unsafe fix visible or refuse it outright. Next: score fixes before asking a human.
+- **Effects measure rows and schema, not changed values.** Next: per-column checksums on protected tables.
+- **Full-table copies suit small and medium databases.** Next: copy-on-write branches (e.g. Neon) for large ones.

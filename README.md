@@ -31,7 +31,7 @@ Merging is blocked until the check is green.
 
 **Real vs mocked.** Everything runs for real: TrueForge, Claude Sonnet 5, Daytona, GitHub PRs, Actions, statuses and branch protection, Postgres and the applies. Only "prod" is simulated: a local Postgres with generated, deterministic data.
 
-**Known limits.** The agent's fixes vary between runs. Before protected tables existed, two destructive fixes were approved in testing. Effects count rows and schema, not changed values. Full-table copies only suit demo scale. One self-hosted runner means jobs queue.
+**Known limits.** Fix quality varies between runs, and the approval card, independent review and protected tables catch the unsafe ones. Effects measure rows and schema, not changed values. Full-table copies suit small and medium databases.
 
 ---
 

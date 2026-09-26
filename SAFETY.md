@@ -25,7 +25,7 @@ The agent is allowed to do the tedious, risky work on its own: read the PR, read
 
 ## Three layers, each independent of the others
 
-1. **Sandbox isolation.** All generated code runs in a Daytona sandbox. It holds a masked copy of the affected tables and no credentials. Code Mode's `call_tool` is bridged back through TrueForge, which attaches the stored MCP credentials, so tokens never enter the sandbox. Worst case: the code wrecks a throwaway database that dies with the session.
+1. **Sandbox isolation.** All generated code runs in a Daytona sandbox. It holds a masked copy of the affected tables and no credentials: every run starts by printing proof (the sandbox host, zero credential-like environment variables, and none of `DATABASE_URL`, `PGWARDEN_TOKEN`, `GITHUB_TOKEN` or model keys present). The only TrueForge variables inside are plumbing: the MCP server names and a session-scoped Code Mode bridge address. Code Mode's `call_tool` is bridged back through TrueForge, which applies the tool allowlist and approval policy and attaches the stored MCP credentials, so tokens never enter the sandbox, and non-read-only tools can't be called from sandbox code at all. Worst case: the code wrecks a throwaway database that dies with the session.
 2. **Human gate.** `apply_migration` pauses in TrueForge until a person chooses Allow or Deny. Before the call, the agent states in plain English what will change. The approval card shows the exact SQL, the rehearsal id, the declared effects and an evidence summary.
 3. **Server-side verification.** pgwarden does not trust the agent's report. When `apply_migration` runs, it:
    1. refuses the statements in the "never" column;

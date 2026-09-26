@@ -8,6 +8,8 @@
 
 ## Writeup
 
+*Also as a standalone file: [WRITEUP.md](WRITEUP.md).*
+
 **The problem.** Migrations are tested in CI on an empty database, but they break on real data. In our demo app, [ledgerly](https://github.com/dipakkr/ledgerly) (a UPI payments ledger), a four-line PR "Enforce ledger integrity" passes CI. Deployed the usual way, statement by statement, it deletes 18 duplicate charges, **silently cascades into 11 customers' refund records (₹19,554)**, then crashes on statement 3 and leaves prod half-migrated. No test could see it: the bug is in the data, not the code.
 
 **What the agent reaches.** Every PR runs our GitHub workflow, which starts a TrueForge session. The agent reads the PR, pulls a **masked, full copy** of prod into a Daytona sandbox, writes and runs its own rehearsal (applies the SQL, counts violations, replays the app's queries, checks invariants), writes a fix, rehearses again, posts the report on the PR and asks to apply.

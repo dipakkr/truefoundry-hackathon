@@ -11,6 +11,7 @@ export interface Project {
   queries_path: string;
   database_url_env: string; // name of the .env variable holding this project's prod URL (never the URL itself)
   mask: string; // PGWARDEN_MASK spec: table.column:email|text,...
+  protected_tables?: string[]; // append-only: pgwarden refuses any apply that removes their rows
   pgwarden: { port: number; mcp_name: string };
   agent: string;
   runner_label: string;

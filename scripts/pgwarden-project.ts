@@ -13,7 +13,7 @@ console.log(`[${p.name}] pgwarden on :${p.pgwarden.port} (MCP server "${p.pgward
 const child = spawn('npm', ['--prefix', 'pgwarden', 'run', 'start'], {
   cwd: REPO_ROOT,
   stdio: 'inherit',
-  env: { ...process.env, DATABASE_URL: url, PGWARDEN_PORT: String(p.pgwarden.port), PGWARDEN_MASK: p.mask },
+  env: { ...process.env, DATABASE_URL: url, PGWARDEN_PORT: String(p.pgwarden.port), PGWARDEN_MASK: p.mask, PGWARDEN_PROTECT: (p.protected_tables ?? []).join(',') },
 });
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => child.kill(sig));
 child.on('exit', (code) => process.exit(code ?? 0));

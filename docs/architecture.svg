@@ -1,113 +1,82 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 900" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="13">
-  <rect width="1100" height="900" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 580" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="13">
+  <rect width="960" height="580" fill="#ffffff"/>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#52525b"/></marker>
-    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#166534"/></marker>
-    <marker id="o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c2410c"/></marker>
   </defs>
 
-  <!-- 1. Developer + GitHub PR -->
-  <rect x="40" y="28" width="250" height="58" rx="10" fill="#ffffff" stroke="#a1a1aa" stroke-width="1.5"/>
-  <text x="165" y="52" text-anchor="middle" font-weight="600" fill="#18181b">Developer</text>
-  <text x="165" y="71" text-anchor="middle" fill="#71717a" font-size="12">opens / updates a migration PR</text>
-
-  <rect x="760" y="28" width="300" height="58" rx="10" fill="#eff6ff" stroke="#1e40af" stroke-width="1.5"/>
-  <text x="910" y="52" text-anchor="middle" font-weight="600" fill="#18181b">GitHub pull request</text>
-  <text x="910" y="71" text-anchor="middle" fill="#1e40af" font-size="12">required check: Migration Rehearsal / prod data</text>
-  <line x1="290" y1="57" x2="756" y2="57" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="523" y="50" text-anchor="middle" fill="#71717a" font-size="12">push</text>
-
-  <!-- 2. GitHub Actions -->
-  <rect x="40" y="128" width="440" height="68" rx="10" fill="#eff6ff" stroke="#1e40af" stroke-width="1.5"/>
-  <text x="260" y="154" text-anchor="middle" font-weight="600" fill="#18181b">GitHub Actions · self-hosted runner next to TrueForge</text>
-  <text x="260" y="176" text-anchor="middle" fill="#1e40af" font-size="12">ci/rehearse-pr.mjs starts a session and mirrors it as the PR check</text>
-  <path d="M910,86 L910,108 L260,108 L260,124" fill="none" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="600" y="102" fill="#71717a" font-size="12">workflow runs on every PR</text>
-
-  <rect x="560" y="140" width="330" height="44" rx="22" fill="#f0fdf4" stroke="#166534" stroke-width="1.5"/>
-  <text x="725" y="167" text-anchor="middle" fill="#166534" font-weight="600">no migration changes → ✅ pass in seconds</text>
-  <line x1="480" y1="162" x2="556" y2="162" stroke="#166534" stroke-width="1.5" marker-end="url(#g)"/>
-
-  <!-- 3. TrueForge zone -->
-  <rect x="40" y="236" width="1020" height="404" rx="14" fill="#f4f4f5" stroke="#a1a1aa" stroke-width="1.5"/>
-  <text x="60" y="262" font-weight="700" fill="#18181b" font-size="14">TrueForge · agent harness</text>
-  <text x="276" y="262" fill="#71717a" font-size="12">runs the agent, the sandbox, the MCP connections (tokens vaulted) and the approval pause</text>
-
-  <line x1="260" y1="196" x2="260" y2="282" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="270" y="226" fill="#52525b" font-size="12">migration changed → POST /sessions</text>
-
-  <rect x="70" y="286" width="420" height="62" rx="10" fill="#ffffff" stroke="#52525b" stroke-width="1.5"/>
-  <text x="280" y="311" text-anchor="middle" font-weight="600" fill="#18181b">Agent: migration-rehearsal-&lt;project&gt;</text>
-  <text x="280" y="331" text-anchor="middle" fill="#71717a" font-size="12">Claude Sonnet 5 · skill pinned by SKILL_REF · decides every step itself</text>
-
-  <!-- agent -> three tool boxes -->
-  <path d="M150,348 L150,388" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
-  <path d="M340,348 L340,388" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
-  <path d="M490,317 L860,317 L860,388" fill="none" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
-
-  <!-- GitHub MCP -->
-  <rect x="70" y="392" width="170" height="150" rx="10" fill="#ffffff" stroke="#1e40af" stroke-width="1.5"/>
-  <text x="155" y="418" text-anchor="middle" font-weight="600" fill="#18181b">GitHub MCP</text>
-  <text x="155" y="444" text-anchor="middle" fill="#1e40af" font-size="12">read the PR diff</text>
-  <text x="155" y="464" text-anchor="middle" fill="#1e40af" font-size="12">read app queries</text>
-  <text x="155" y="484" text-anchor="middle" fill="#1e40af" font-size="12">post the report</text>
-  <text x="155" y="518" text-anchor="middle" fill="#71717a" font-size="11">PR text = untrusted data</text>
-
-  <!-- Daytona sandbox -->
-  <rect x="260" y="392" width="400" height="150" rx="10" fill="#faf5ff" stroke="#7e22ce" stroke-width="1.5"/>
-  <text x="460" y="418" text-anchor="middle" font-weight="600" fill="#18181b">Daytona sandbox (Code Mode) · 0 credentials</text>
-  <text x="278" y="444" fill="#581c87" font-size="12">agent's Python: throwaway Postgres + masked prod copy via call_tool</text>
-  <text x="278" y="464" fill="#581c87" font-size="12">apply the SQL · count violations · PREPARE every app query</text>
-  <text x="278" y="484" fill="#581c87" font-size="12">check invariants · diff effects (rows + schema)</text>
-  <rect x="300" y="498" width="320" height="30" rx="15" fill="#ffffff" stroke="#7e22ce"/>
-  <text x="460" y="518" text-anchor="middle" fill="#581c87" font-weight="600" font-size="12">v1 fails → agent writes a fix → v2 passes</text>
-
-  <!-- pgwarden MCP tools -->
-  <rect x="690" y="392" width="340" height="150" rx="10" fill="#f0fdf4" stroke="#166534" stroke-width="1.5"/>
-  <text x="860" y="418" text-anchor="middle" font-weight="600" fill="#18181b">pgwarden MCP (our server)</text>
-  <text x="860" y="444" text-anchor="middle" fill="#166534" font-size="12">describe_schema · profile_table</text>
-  <text x="860" y="464" text-anchor="middle" fill="#166534" font-size="12">export_table (PII masked) · record_rehearsal</text>
-  <text x="860" y="484" text-anchor="middle" fill="#166534" font-size="12" font-weight="600">apply_migration (gated)</text>
-  <text x="860" y="518" text-anchor="middle" fill="#71717a" font-size="11">the only holder of the prod credential</text>
-
-  <line x1="660" y1="462" x2="686" y2="462" stroke="#52525b" stroke-width="1.5" marker-start="url(#a)" marker-end="url(#a)"/>
-  
-  <!-- Approval card -->
-  <rect x="690" y="570" width="340" height="52" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"/>
-  <text x="860" y="592" text-anchor="middle" font-weight="700" fill="#9a3412">⏸ TrueForge approval card</text>
-  <text x="860" y="611" text-anchor="middle" fill="#9a3412" font-size="12">SQL · declared effects · review assist</text>
-  <line x1="860" y1="542" x2="860" y2="566" stroke="#c2410c" stroke-width="1.5" marker-end="url(#o)"/>
-  <text x="870" y="559" fill="#9a3412" font-size="11">apply_migration</text>
-  <text x="80" y="590" fill="#52525b" font-size="12">Everything above is autonomous. The run pauses here and waits,</text>
-  <text x="80" y="608" fill="#52525b" font-size="12">minutes or hours, until a human decides. A Deny is final.</text>
-
   <!-- Human -->
-  <rect x="830" y="664" width="230" height="58" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="1.5"/>
-  <text x="945" y="688" text-anchor="middle" font-weight="600" fill="#18181b">Human reviewer</text>
-  <text x="945" y="707" text-anchor="middle" fill="#9a3412" font-size="12">Allow / Deny</text>
-  <line x1="945" y1="664" x2="945" y2="626" stroke="#c2410c" stroke-width="1.5" marker-end="url(#o)"/>
+  <rect x="24" y="40" width="150" height="70" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="1.5"/>
+  <text x="99" y="68" text-anchor="middle" font-weight="600" fill="#18181b">Reviewer</text>
+  <text x="99" y="88" text-anchor="middle" fill="#9a3412">Allow / Deny</text>
 
-  <!-- 4. pgwarden apply -->
-  <rect x="40" y="664" width="600" height="112" rx="10" fill="#f0fdf4" stroke="#166534" stroke-width="1.5"/>
-  <text x="340" y="688" text-anchor="middle" font-weight="600" fill="#18181b">pgwarden apply, after Allow</text>
-  <text x="60" y="712" fill="#166534" font-size="12">policy (no DROP / TRUNCATE / RENAME) · exact rehearsed SQL (hash) · drift · not stale</text>
-  <text x="60" y="732" fill="#166534" font-size="12">one apply at a time · backup · run in a single transaction · protected tables append-only</text>
-  <text x="60" y="756" fill="#166534" font-size="12" font-weight="700">actual effects == approved effects ?  COMMIT  :  ROLLBACK (prod unchanged)</text>
-  <path d="M760,622 L760,640 L600,640 L600,660" fill="none" stroke="#166534" stroke-width="1.5" marker-end="url(#g)"/>
-  <text x="606" y="654" fill="#166534" font-size="11">Allow</text>
+  <!-- TrueForge box -->
+  <rect x="220" y="20" width="440" height="250" rx="12" fill="#f4f4f5" stroke="#a1a1aa" stroke-width="1.5"/>
+  <text x="236" y="44" font-weight="600" fill="#18181b">TrueForge (harness, local :8790)</text>
+  <rect x="240" y="60" width="180" height="56" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="330" y="84" text-anchor="middle" font-weight="600" fill="#18181b">Chat UI + approvals</text>
+  <text x="330" y="102" text-anchor="middle" fill="#71717a" font-size="12">human gate (layer 2)</text>
+  <rect x="440" y="60" width="200" height="56" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="540" y="84" text-anchor="middle" font-weight="600" fill="#18181b">Agent loop + skill</text>
+  <text x="540" y="102" text-anchor="middle" fill="#71717a" font-size="12">Claude Sonnet 5 · skill pinned</text>
+  <rect x="240" y="140" width="190" height="56" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="335" y="164" text-anchor="middle" font-weight="600" fill="#18181b">MCP client</text>
+  <text x="335" y="182" text-anchor="middle" fill="#71717a" font-size="12">holds GitHub + pgwarden creds</text>
+  <rect x="450" y="140" width="190" height="56" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="545" y="164" text-anchor="middle" font-weight="600" fill="#18181b">Code Mode bridge</text>
+  <text x="545" y="182" text-anchor="middle" fill="#71717a" font-size="12">sandbox call_tool → harness</text>
+  <text x="240" y="238" fill="#71717a" font-size="12">Sessions view: turns, tool calls, sandbox runs, tokens</text>
+  <text x="240" y="256" fill="#71717a" font-size="12">require_approval_for_tools: [apply_migration]</text>
 
-  <!-- Prod -->
-  <ellipse cx="735" cy="684" rx="55" ry="12" fill="#ecfdf5" stroke="#166534" stroke-width="1.5"/>
-  <path d="M680,684 L680,752 A55,12 0 0 0 790,752 L790,684" fill="#ecfdf5" stroke="#166534" stroke-width="1.5"/>
-  <text x="735" y="722" text-anchor="middle" font-weight="600" fill="#18181b">Prod</text>
-  <text x="735" y="740" text-anchor="middle" fill="#166534" font-size="11">Postgres</text>
-  <line x1="640" y1="720" x2="676" y2="720" stroke="#166534" stroke-width="1.5" marker-end="url(#g)"/>
+  <line x1="174" y1="75" x2="238" y2="88" stroke="#c2410c" stroke-width="1.5" marker-end="url(#a)" marker-start="url(#a)"/>
 
-  <!-- 5. Result -->
-  <rect x="40" y="814" width="1020" height="56" rx="10" fill="#ffffff" stroke="#a1a1aa" stroke-width="1.5"/>
-  <text x="550" y="838" text-anchor="middle" font-weight="600" fill="#18181b">PR check ✅ "Rehearsed, approved, applied and verified on prod"   ·   or ❌ denied / refused, prod unchanged</text>
-  <text x="550" y="857" text-anchor="middle" fill="#71717a" font-size="12">merge stays blocked until the check is green · job summary + live trace linked from the check</text>
-  <line x1="340" y1="776" x2="340" y2="810" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
-  <path d="M1060,842 L1080,842 L1080,57 L1064,57" fill="none" stroke="#1e40af" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
-  <text x="1076" y="450" fill="#1e40af" font-size="11" transform="rotate(-90 1076 450)" text-anchor="middle">commit status on the PR</text>
+  <!-- GitHub CI -->
+  <rect x="24" y="170" width="170" height="104" rx="10" fill="#eff6ff" stroke="#1e40af" stroke-width="1.5"/>
+  <text x="109" y="196" text-anchor="middle" font-weight="600" fill="#18181b">GitHub CI</text>
+  <text x="109" y="216" text-anchor="middle" fill="#1e40af" font-size="12">PR push → runner</text>
+  <text x="109" y="234" text-anchor="middle" fill="#1e40af" font-size="12">starts a session (API)</text>
+  <text x="109" y="252" text-anchor="middle" fill="#1e40af" font-size="12">required PR check:</text>
+  <text x="109" y="268" text-anchor="middle" fill="#1e40af" font-size="12">merge waits for ✅</text>
+  <line x1="194" y1="222" x2="218" y2="222" stroke="#1e40af" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- credential boundary -->
+  <line x1="700" y1="20" x2="700" y2="560" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="708" y="36" fill="#dc2626" font-size="12" font-weight="600">credential boundary</text>
+
+  <!-- Sandbox -->
+  <rect x="220" y="320" width="440" height="200" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="236" y="344" font-weight="600" fill="#1e3a8a">Daytona sandbox (layer 1)</text>
+  <text x="236" y="368" fill="#1e40af">• agent-written rehearsal: v1 fails → fix → v2 passes</text>
+  <text x="236" y="390" fill="#1e40af">• throwaway Postgres 16 + masked full copy of prod</text>
+  <text x="236" y="412" fill="#1e40af">• replays app queries, checks invariants, diffs effects</text>
+  <text x="236" y="434" fill="#1e40af">• credentials inside: none</text>
+  <text x="236" y="456" fill="#1e40af">• destroyed with the session</text>
+  <line x1="545" y1="198" x2="545" y2="318" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text x="552" y="262" fill="#52525b" font-size="12">runs code / bridges calls</text>
+
+  <!-- GitHub -->
+  <rect x="730" y="50" width="206" height="90" rx="10" fill="#ffffff" stroke="#a1a1aa" stroke-width="1.5"/>
+  <text x="833" y="76" text-anchor="middle" font-weight="600" fill="#18181b">GitHub: app repo</text>
+  <text x="833" y="96" text-anchor="middle" fill="#71717a" font-size="12">read PR + files, comment</text>
+  <text x="833" y="114" text-anchor="middle" fill="#71717a" font-size="12">no merge / push tools enabled</text>
+  <line x1="432" y1="160" x2="728" y2="100" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- pgwarden -->
+  <rect x="730" y="180" width="206" height="236" rx="10" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="833" y="206" text-anchor="middle" font-weight="600" fill="#14532d">pgwarden MCP (layer 3)</text>
+  <text x="744" y="230" fill="#166534" font-size="12">read tools (READ ONLY txn)</text>
+  <text x="744" y="250" fill="#166534" font-size="12">record_rehearsal (audit)</text>
+  <text x="744" y="270" fill="#9a3412" font-size="12" font-weight="600">apply_migration (gated)</text>
+  <text x="744" y="292" fill="#166534" font-size="12">1 refuse DROP / RENAME / …</text>
+  <text x="744" y="310" fill="#166534" font-size="12">2 exact rehearsed SQL, not stale</text>
+  <text x="744" y="328" fill="#166534" font-size="12">3 no drift · protected tables</text>
+  <text x="744" y="346" fill="#166534" font-size="12">4 run in one transaction</text>
+  <text x="744" y="364" fill="#166534" font-size="12">5 real effects = approved?</text>
+  <text x="744" y="382" fill="#166534" font-size="12">    commit, else roll back</text>
+  <line x1="432" y1="178" x2="728" y2="250" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- prod -->
+  <rect x="730" y="456" width="206" height="80" rx="10" fill="#ffffff" stroke="#a1a1aa" stroke-width="1.5"/>
+  <text x="833" y="484" text-anchor="middle" font-weight="600" fill="#18181b">Prod Postgres</text>
+  <text x="833" y="504" text-anchor="middle" fill="#71717a" font-size="12">only pgwarden holds the URL</text>
+  <line x1="833" y1="418" x2="833" y2="454" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
 </svg>

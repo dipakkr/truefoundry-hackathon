@@ -1,0 +1,62 @@
+# Runs Migration Rehearsal (an agent on TrueForge) on every PR that changes a migration.
+# Installed by `npm run onboard` from dipakkr/truefoundry-hackathon for project "{{PROJECT}}".
+# The job runs on a self-hosted runner next to TrueForge, so TrueForge is never exposed to the internet.
+# The human approval for applying to prod stays in TrueForge's UI; this job mirrors progress as a PR status.
+name: Migration Rehearsal
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths: ['{{MIGRATIONS_PATH}}/**']
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to rehearse
+        required: true
+
+permissions:
+  contents: read
+  statuses: write
+  pull-requests: read
+
+concurrency:
+  group: migration-rehearsal-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    # Never run code from forks on the self-hosted runner.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, {{RUNNER_LABEL}}]
+    timeout-minutes: 35
+    steps:
+      - name: Get the Migration Rehearsal CI script
+        uses: actions/checkout@v4
+        with:
+          repository: dipakkr/truefoundry-hackathon
+          path: mr
+          sparse-checkout: ci
+
+      - name: Resolve PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            N="${{ inputs.pr }}"
+            SHA=$(gh pr view "$N" -R "${{ github.repository }}" --json headRefOid -q .headRefOid)
+          else
+            N="${{ github.event.pull_request.number }}"
+            SHA="${{ github.event.pull_request.head.sha }}"
+          fi
+          echo "n=$N" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Rehearse on prod data (TrueForge)
+        env:
+          AGENT: {{AGENT}}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.n }}
+          HEAD_SHA: ${{ steps.pr.outputs.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node mr/ci/rehearse-pr.mjs

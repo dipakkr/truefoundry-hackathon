@@ -16,7 +16,9 @@
     "demo-pr": "tsx scripts/demo-pr.ts",
     "e2e": "tsx scripts/e2e.ts",
     "postinstall": "npm --prefix pgwarden install --no-audit --no-fund",
-    "guardrails": "tsx scripts/guardrails.ts"
+    "guardrails": "tsx scripts/guardrails.ts",
+    "onboard": "tsx scripts/onboard.ts",
+    "pgwarden:project": "tsx scripts/pgwarden-project.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

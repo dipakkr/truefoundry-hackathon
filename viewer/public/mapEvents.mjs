@@ -76,6 +76,9 @@ export function classifyToolCall(tc) {
   return { kind: "TOOL", system: null, server, tool: name, display: server ? `${server}.${name}` : name, args };
 }
 
+/** pgwarden MCP servers: "pgwarden" for the first project, "pgwarden_<project>" for each onboarded one. */
+export const isPgwarden = (server) => typeof server === "string" && /^pgwarden(_|$)/.test(server);
+
 /** A RehearsalReport (CONTRACTS.md §8) has version, verdict and steps[]. */
 export function isRehearsalReport(v) {
   return !!v && typeof v === "object" && !Array.isArray(v) && "verdict" in v && Array.isArray(v.steps) && ("version" in v || "effects" in v);
@@ -267,7 +270,7 @@ export function mapEvents(input) {
             dim: !!c.dim,
           });
           if (c.kind === "SPAN" && c.system === "exec") node.codeModeCalls = codeModeCallsInScript(c.args.command);
-          if (c.server === "pgwarden" && c.tool === "record_rehearsal" && isRehearsalReport(c.args.report)) addReport(c.args.report, "record_rehearsal input", node, t);
+          if (isPgwarden(c.server) && c.tool === "record_rehearsal" && isRehearsalReport(c.args.report)) addReport(c.args.report, "record_rehearsal input", node, t);
           calls.set(tc.id, { obs: node, cls: c, turnId, msgId: ev.id, t });
         });
         break;
@@ -298,7 +301,7 @@ export function mapEvents(input) {
           const rep = findReportInText(r.stdout);
           if (rep) addReport(rep, "sandbox stdout", n, t);
         }
-        if (c.cls.server === "pgwarden") {
+        if (isPgwarden(c.cls.server)) {
           if (c.cls.tool === "verify_prod_state" && r.ok && r.value && typeof r.value === "object") prodState = { ...r.value, at: t, obsId: n.id };
           if (c.cls.tool === "apply_migration") n.applyResult = r.ok ? { status: r.value?.status ?? "ok", applied_version: r.value?.applied_version } : { status: r.denied ? "denied" : "refused", code };
         }

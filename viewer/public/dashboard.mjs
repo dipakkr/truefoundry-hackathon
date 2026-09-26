@@ -2,6 +2,8 @@
 // No DOM, no fetch. Shared by the browser (app.js) and `node --test`.
 
 export const REHEARSAL_AGENT = "migration-rehearsal";
+/** Migration Rehearsal agents: "migration-rehearsal" and one "migration-rehearsal-<project>" per onboarded project (not the naive control). */
+export const isRunAgent = (name) => typeof name === "string" && (name === REHEARSAL_AGENT || (name.startsWith(REHEARSAL_AGENT + "-") && name !== REHEARSAL_AGENT + "-naive"));
 export const DEFAULT_REPO = "dipakkr/shopkart";
 const HOUR = 3600e3;
 
@@ -82,7 +84,7 @@ export function sessionRow(session, mapped) {
     updatedAt: session.updated_at ?? null,
     prompt: String(prompt).replace(/\s+/g, " ").trim(),
     agent,
-    isRehearsal: session.agent?.name === REHEARSAL_AGENT,
+    isRehearsal: isRunAgent(session.agent?.name),
     outcome: outcomeOf(s),
     // harness time (excludes the human wait between turns); fall back to wall clock
     latencyMs: session.metrics?.total_duration_ms || s.durationMs || null,

@@ -12,7 +12,7 @@ The criteria text is the official wording. "Evidence" is what the judge will see
 | **30 · Harness** | ✅ | H1: live GitHub + Postgres MCP tool calls in every run. H2: agent writes `/tmp/dr/rehearse.py` and the fix SQL in the Daytona sandbox each run. H3: TrueForge `tool.approval_required` on `apply_migration` in 10/10 runs. H4: Sessions view + trace viewer (`viewer/`) render the real run. H5: live, unscripted, 10/10. |
 | **25 · Actually runs** | ✅ | Fresh clone from GitHub + README only → setup all green → doctor clean → full rehearsal committed in 190 s. `setup`, `doctor`, `reset`, `demo-pr`, `e2e` scripts. Reliability 10/10 ([reliability.md](../demo/reliability.md)). AI disclosure in README. |
 | **20 · Where it stops** | ✅ | Deny → prod unchanged (5/5). Naive agent `DROP TABLE` + human Allow → `POLICY_REFUSED` (live). Effects mismatch → rollback (pgwarden tests). Policy table in SAFETY.md, README, slide. Plain-English "about to apply" message before the gate. |
-| **15 · Job worth handing over** | ✅ | The PR looks harmless with green CI; the agent finds 14 duplicate groups + 2 broken queries and writes the fix (merge dupes, expand/contract). No competitor tests on real data. |
+| **15 · Job worth handing over** | ✅ | The PR looks harmless with green CI; the agent finds 14 duplicate groups + 2 broken queries and writes the fix (merge dupes, expand/contract). The review tools we compared lint the SQL; none rehearse it on your data and write the fix. |
 | **10 · Demo clarity** | ✅ (rehearse on stage) | Script retimed to the measured median; live "try to break it"; backup sessions listed in [backup-sessions.md](../demo/backup-sessions.md); closing slide with real numbers; Q&A prep with live findings. |
 
 Still to do by people, not code: two timed dry runs, stage laptop setup (zoom, tabs), and posting the build story after results.
@@ -75,7 +75,7 @@ Still to do by people, not code: two timed dry runs, stage laptop setup (zoom, t
 |---|---|---|---|---|---|
 | J1 | The opening hook: "Who here has had a migration pass CI and fail in prod?" (hands go up) | WS5 | | | |
 | J2 | The PR looks harmless and CI is green, so the audience would have merged it too | WS2 | | | |
-| J3 | The market gap in one line: existing tools (Atlas, Squawk, Bytebase, PlanetScale) check the SQL text; **none test against production data** | WS5 | | | |
+| J3 | The market gap in one line: existing tools (Atlas, Squawk, Bytebase, PlanetScale) lint the SQL text; **none rehearse it on your data and write the fix** | WS5 | | | |
 | J4 | Where it fits in real life: runs on every migration PR as a merge-blocking check; the reviewer gets proof instead of a guess | WS5 | | | |
 
 ---

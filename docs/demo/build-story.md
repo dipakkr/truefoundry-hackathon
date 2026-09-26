@@ -8,7 +8,7 @@ Post after results. Tags: #agentsthatact @truefoundry @polariscodes. Attach: doc
 
 At the TrueFoundry × Polaris "Agents That Act" hackathon we built Migration Rehearsal: an agent that tests database migrations on a masked copy of real production data before they're allowed near prod.
 
-The problem: a two-line migration passes CI and code review, then fails in production. CI runs on an empty database; prod has 14 customers who signed up twice with different capitalization. Every migration tool we looked at (Atlas, Squawk, Bytebase, PlanetScale) checks the SQL text. None run it against real data.
+The problem: a two-line migration passes CI and code review, then fails in production. CI runs on an empty database; prod has 14 customers who signed up twice with different capitalization. The review tools we compared (Atlas, Squawk, Bytebase) lint the SQL text; none of them rehearse it on your data and write the fix.
 
 What the agent does, on TrueForge:
 1. Reads the PR and prod's schema through MCP.

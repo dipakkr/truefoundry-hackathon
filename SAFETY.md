@@ -34,6 +34,8 @@ The agent is allowed to do the tedious, risky work on its own: read the PR, read
    4. measures the real row deltas and schema changes;
    5. commits only if they equal the `declared_effects` the human approved (row deltas exactly, schema changes as a set); otherwise it rolls back.
 
+You can check layer 3 yourself: `npm run guardrails` runs six attacks against the live server and verifies prod is unchanged. The full edge-case matrix is in [docs/EDGE_CASES.md](docs/EDGE_CASES.md).
+
 A fooled model can't get past layer 3. A forged report can't get past layers 2 and 3. The demo shows this live with a "naive" agent that has no safety instructions at all: the server still refuses.
 
 ## Threat model

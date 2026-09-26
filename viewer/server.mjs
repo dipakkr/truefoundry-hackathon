@@ -2,12 +2,14 @@
 // Migration Rehearsal trace viewer: a read-only window onto TrueForge sessions.
 // Serves viewer/public on :8795 and proxies GET /tf/* -> ${TRUEFORGE_BASE_URL}/*.
 // The proxy is GET-only on purpose: the viewer can never create turns or send approvals.
-// Approvals happen in the TrueForge chat UI.
+// Approvals happen in the TrueForge chat UI. The one write path is /api/projects/onboard (local, see
+// projects-api.mjs), which connects a new app repo; it never touches sessions or approvals.
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
+import { handleProjects } from "./projects-api.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(HERE, "public");
@@ -65,6 +67,11 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const p = url.pathname;
   if (p === "/tf" || p.startsWith("/tf/")) return proxy(req, res, p.slice(3) + url.search);
+  if (p.startsWith("/api/projects")) {
+    const tfJson = (path) => fetch(TF + path, { headers: TOKEN ? { authorization: `Bearer ${TOKEN}` } : {} }).then((r) => (r.ok ? r.json() : null));
+    try { if (await handleProjects(req, res, p, tfJson)) return; } catch (e) { return send(res, 500, JSON.stringify({ error: String(e?.message || e) }), "application/json"); }
+    return send(res, 404, "not found");
+  }
   if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "read-only");
   if (p === "/config.json") return send(res, 200, JSON.stringify({ trueforgeUi: TF_UI, trueforgeApi: TF }), "application/json");
   if (p.startsWith("/fixtures/")) return serveFile(res, FIXTURES, p.slice("/fixtures/".length));

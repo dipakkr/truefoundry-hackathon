@@ -177,6 +177,64 @@ function errorBanner(e) {
   return `<div class="banner bad"><b>TrueForge is not reachable through the viewer proxy.</b><span>${esc(e?.message || e)}</span><span class="mut">Start it with <span class="mono">npx @truefoundry/trueforge@latest</span> (port 8790) or set <span class="mono">TRUEFORGE_BASE_URL</span>. To see the viewer with sample data, open <a href="?fixture=1">?fixture=1</a>.</span></div>`;
 }
 
+
+/* ---------------- projects + onboarding ---------------- */
+async function renderProjects() {
+  const tok = routeSeq;
+  setActiveNav("projects");
+  document.title = "Projects · Migration Rehearsal";
+  $("app").innerHTML = pageHead("Setup", "Projects", `<button class="btn gate" id="onbBtn" type="button">+ Onboard project</button>`) + `
+    <div class="card" id="onbCard" hidden style="margin-bottom:16px">
+      <header><h2>Onboard a project</h2><span class="s">connects an app repo and its prod Postgres; same steps as <span class="mono">npm run onboard</span></span></header>
+      <form id="onbForm" class="onb">
+        <label>Project name<input name="project" required pattern="[a-z][a-z0-9-]{1,30}" placeholder="ledgerly"></label>
+        <label>GitHub repo<input name="repo" required pattern="[\w.-]+/[\w.-]+" placeholder="owner/app"></label>
+        <label>Prod database variable<input name="dbEnv" pattern="[A-Z][A-Z0-9_]{1,60}" placeholder="LEDGERLY_DATABASE_URL"><small>Name of the .env variable holding the URL. The URL itself never leaves the server.</small></label>
+        <label>Migrations path<input name="migrations" placeholder="migrations"></label>
+        <label>App queries path<input name="queries" placeholder="src/queries"></label>
+        <div class="onb-act"><button class="btn gate" type="submit" id="onbGo">Run onboarding</button><span class="meta-note">DB check → PII scan → pgwarden + agent in TrueForge → workflow PR → runner</span></div>
+      </form>
+      <pre class="box onb-out" id="onbOut" hidden></pre>
+    </div>
+    <div class="tbl"><table class="dtable"><thead><tr><th>Project</th><th>Repo</th><th>pgwarden</th><th>Agent</th><th>CI workflow</th><th>Runner</th><th>Masked PII</th><th class="r">Runs</th><th>Last run</th></tr></thead><tbody id="rows">${skeletonRows(9, 2)}</tbody></table></div>
+    <div id="listMsg"></div>`;
+  const yes = (v, ok, bad) => v == null ? `<span class="mut">?</span>` : v ? `<span class="st ok">${ok}</span>` : `<span class="st bad">${bad}</span>`;
+  const load = async () => {
+    let data;
+    try { data = (await (await fetch("/api/projects", { cache: "no-store" })).json()).data; }
+    catch (e) { if (tok === routeSeq) $("listMsg").innerHTML = errorBanner(e); return; }
+    if (tok !== routeSeq) return;
+    $("rows").innerHTML = data.length ? data.map((p) => `<tr>
+      <td><b>${esc(p.name)}</b></td>
+      <td><a href="https://github.com/${esc(p.repo)}" target="_blank" rel="noopener" class="mono">${esc(p.repo)}</a></td>
+      <td>${yes(p.health.pgwarden_up, "up", "down")} <span class="mono mut" style="font-size:11px">${esc(p.pgwarden.mcp_name)} :${p.pgwarden.port}</span></td>
+      <td>${yes(p.health.agent_registered, "registered", "missing")} <span class="mono mut" style="font-size:11px">${esc(p.agent)}</span></td>
+      <td>${yes(p.health.workflow, "installed", "not installed")}</td>
+      <td>${p.health.runners_online == null ? '<span class="mut">?</span>' : p.health.runners_online > 0 ? `<span class="st ok">${p.health.runners_online} online</span>` : '<span class="st bad">offline</span>'}</td>
+      <td title="${esc(p.masked_columns.join(", "))}">${p.masked_columns.length} columns</td>
+      <td class="r">${p.runs}</td>
+      <td>${p.last_run ? `<a href="${traceHref(p.last_run.id)}">${esc(ftime(Date.parse(p.last_run.at)))}</a>` : '<span class="mut">–</span>'}</td></tr>`).join("")
+      : `<tr><td colspan="9" class="empty">No projects yet. Onboard one.</td></tr>`;
+  };
+  $("refreshBtn").addEventListener("click", load);
+  $("onbBtn").addEventListener("click", () => { $("onbCard").hidden = !$("onbCard").hidden; });
+  $("onbForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const body = Object.fromEntries([...new FormData(ev.target)].filter(([, v]) => String(v).trim()).map(([k, v]) => [k, String(v).trim()]));
+    const out = $("onbOut");
+    out.hidden = false; out.textContent = ""; $("onbGo").disabled = true;
+    try {
+      const res = await fetch("/api/projects/onboard", { method: "POST", headers: { "content-type": "application/json", "x-mr-dashboard": "1" }, body: JSON.stringify(body) });
+      if (!res.ok) { out.textContent = (await res.json().catch(() => ({}))).error || `HTTP ${res.status}`; return; }
+      const reader = res.body.getReader(); const dec = new TextDecoder();
+      for (;;) { const { value, done } = await reader.read(); if (done) break; out.textContent += dec.decode(value, { stream: true }); out.scrollTop = out.scrollHeight; }
+    } catch (e) { out.textContent += `\n${e.message}`; }
+    finally { $("onbGo").disabled = false; load(); }
+  });
+  await load();
+  startPageRefresh(load);
+}
+
 /* ---------------- status pill + table rows ---------------- */
 function pill(o) {
   const title = o.full && o.full !== o.label ? ` title="${esc(o.full)}"` : "";
@@ -818,6 +876,7 @@ async function route() {
   if (path === "/traces") return renderTraceList("traces");
   if (path === "/runs" || path === "/rehearsals") return renderTraceList("runs");
   if (path === "/approvals") return renderApprovals();
+  if (path === "/projects") return renderProjects();
   return renderDashboard();
 }
 

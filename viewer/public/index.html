@@ -248,6 +248,13 @@ td.r{font-family:var(--mono)}
 .kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;font-size:12.5px;margin:0}
 .kv dt{color:var(--mut)} .kv dd{margin:0;font-family:var(--mono);font-size:12px;word-break:break-word}
 .empty{color:var(--mut);padding:24px 14px}
+[hidden]{display:none!important}
+.onb{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:12px 16px}
+.onb label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mut);font-weight:600}
+.onb input{font:inherit;font-size:13px;font-weight:400;color:var(--ink);background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:6px 8px}
+.onb small{font-weight:400;font-size:11px}
+.onb-act{grid-column:1/-1;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.onb-out{margin:0 16px 16px;max-height:360px;overflow:auto;white-space:pre-wrap;font-size:12px}
 .gatebox{border:1px solid var(--gate);background:var(--gate-bg);border-radius:8px;padding:10px 12px;display:grid;gap:8px}
 .gatebox.done{border-color:var(--line);background:var(--sub)}
 .gatebox .q{font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -358,6 +365,7 @@ a.kpi:hover{border-color:var(--line2);background:var(--sub)}
       <a class="nav" href="#/traces" data-nav="traces" title="Traces"><svg class="i" viewBox="0 0 16 16"><path d="M3 3.5h10M5 8h8M7 12.5h6"/><path d="M3 3.5v9"/></svg><span class="lab">Traces</span></a>
       <a class="nav" href="#/runs" data-nav="runs" title="Runs"><svg class="i" viewBox="0 0 16 16"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4"/><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg><span class="lab">Runs</span></a>
       <a class="nav" href="#/approvals" data-nav="approvals" title="Approvals"><svg class="i" viewBox="0 0 16 16"><path d="M8 1.8 13 3.8v4c0 3-2.2 5.2-5 6.4C5.2 13 3 10.8 3 7.8v-4z"/><path d="m5.8 8 1.6 1.6 3-3.2"/></svg><span class="lab">Approvals</span><span class="badge" id="apprBadge" hidden title="Pending approvals"></span></a>
+      <a class="nav" href="#/projects" data-nav="projects" title="Projects"><svg class="i" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/><path d="M5 5h.01M5 11h.01"/></svg><span class="lab">Projects</span></a>
       <div class="ngroup">Links</div>
       <a class="nav" id="tfLink" href="http://localhost:8790" target="_blank" rel="noopener" title="Open TrueForge"><svg class="i" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6h12"/></svg><span class="lab">Open TrueForge</span><svg class="i ext lab" viewBox="0 0 16 16"><path d="M6 3h7v7M13 3 6 10"/></svg></a>
       <a class="nav" id="prLink" href="#" target="_blank" rel="noopener" title="GitHub PR"><svg class="i" viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="12.5" r="1.5"/><path d="M4.5 5v6M11.5 11V6.5A2 2 0 0 0 9.5 4.5H7"/><path d="m8.5 3-1.5 1.5L8.5 6"/></svg><span class="lab" id="prLabel">GitHub PR</span><svg class="i ext lab" viewBox="0 0 16 16"><path d="M6 3h7v7M13 3 6 10"/></svg></a>

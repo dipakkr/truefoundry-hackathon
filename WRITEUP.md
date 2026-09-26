@@ -12,7 +12,9 @@ Every PR runs a GitHub workflow that starts a TrueForge session. The agent reads
 Applying to prod. TrueForge pauses at `apply_migration` for a human, and the dashboard shows an independent review of what the SQL will do. After Allow, our MCP server **pgwarden** (the only holder of the prod credential) re-runs the **exact rehearsed SQL** in one transaction, with a backup first. It commits only if the real effects equal the approved ones. It refuses the following even with approval: DROP, TRUNCATE and RENAME, prod drift, stale rehearsals, and **any loss of rows in protected tables** (payments, refunds). The PR can't merge until the check is green.
 
 ## Architecture
-GitHub PR → Actions (self-hosted runner) → **TrueForge**: agent, Daytona sandbox, GitHub MCP, pgwarden MCP → approval → pgwarden apply → Postgres → PR check. Onboarding (`npm run onboard`) connects any repo: DB check, PII scan, a per-project pgwarden and agent, a workflow PR, and branch protection. Diagram: `docs/architecture.svg`.
+![Architecture: GitHub CI starts a TrueForge session; the agent works in a credential-free Daytona sandbox; pgwarden, behind the credential boundary, is the only path to prod](docs/architecture.svg)
+
+GitHub PR → Actions (self-hosted runner) → **TrueForge**: agent, Daytona sandbox, GitHub MCP, pgwarden MCP → approval → pgwarden apply → Postgres → PR check. Onboarding (`npm run onboard`) connects any repo: DB check, PII scan, a per-project pgwarden and agent, a workflow PR, and branch protection.
 
 ## How TrueForge was used
 TrueForge provides:
@@ -27,6 +29,15 @@ We wrote no agent loop.
 
 ## Real vs mocked
 **Real:** TrueForge, the model, Daytona, GitHub PRs, Actions, statuses and branch protection, Postgres, masking and every apply. **Simulated:** "prod" is a local Postgres with generated, deterministic data. There are no real customers.
+
+## In action
+A real CI-triggered run on ledgerly. Left: TrueForge's steps (sandbox proof, masked export, v1 fails, v2 fix). Right: the approval with the independent review ("recommend: allow", 0 rows change).
+
+![A real run: trace and approval with review assist](docs/images/run-trace.png)
+
+TrueForge's own approval card, pausing the run until a human decides:
+
+![TrueForge approval card](docs/images/trueforge-approval.png)
 
 ## Known limits
 - The agent's fixes vary between runs. Before protected tables existed, two destructive fixes were approved in testing.

@@ -9,6 +9,7 @@
     "seed": "tsx seed/seed.ts",
     "pgwarden": "npm --prefix pgwarden run start",
     "trueforge": "tsx scripts/trueforge.ts",
+    "setup": "tsx scripts/setup.ts",
     "postinstall": "npm --prefix pgwarden install --no-audit --no-fund"
   },
   "devDependencies": {

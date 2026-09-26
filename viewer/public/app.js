@@ -618,6 +618,53 @@ async function refreshTrace(first) {
   } else if ($("liveNote")) $("liveNote").textContent = "";
 }
 
+// Pending-approval callout: what is waiting, the key facts, time left before the rehearsal goes stale, one primary action.
+const STALE_MS = 30 * 60e3; // pgwarden refuses rehearsals older than 30 minutes (REHEARSAL_STALE)
+let staleTimer = null;
+function approvalCallout(a, ses) {
+  const n = state.mapped.observations.find((o) => o.id === a.id) || {};
+  const args = n.input?.v || {};
+  const server = String(n.toolName || a.tool || "").split(".")[0];
+  const rv = typeof args.sql === "string" ? reviewMigration({ sql: args.sql, effects: args.declared_effects, protectedTables: protectedByServer[server] || [] }) : null;
+  const deltas = args.declared_effects?.row_deltas || {};
+  const changed = Object.values(deltas).reduce((t, d) => t + Math.abs(d), 0);
+  const schema = (args.declared_effects?.schema_changes || []).length;
+  const prot = protectedByServer[server] || [];
+  const protLost = prot.filter((t) => (deltas[t] ?? 0) < 0);
+  const recorded = state.mapped.observations.filter((o) => /record_rehearsal$/.test(o.name) && o.end != null && o.end <= (n.start ?? Infinity)).map((o) => o.end).sort((x, y) => y - x)[0] ?? n.start;
+  const { repo, pr } = repoPrFromText(ses.title || "");
+  const chip = (cls, text) => `<span class="ac-chip ${cls}">${text}</span>`;
+  const facts = [
+    rv ? chip(rv.verdict === "allow" ? "ok" : rv.verdict === "deny" ? "bad" : "warn", rv.verdict === "allow" ? "Recommend: allow" : rv.verdict === "deny" ? "Recommend: deny" : "Review carefully") : "",
+    chip(changed ? "warn" : "ok", changed ? `${changed.toLocaleString()} row(s) change` : "0 rows change"),
+    schema ? chip("", `${schema} schema change${schema > 1 ? "s" : ""}`) : "",
+    prot.length ? chip(protLost.length ? "bad" : "ok", protLost.length ? `protected rows lost: ${protLost.join(", ")}` : `protected tables untouched`) : "",
+    recorded ? `<span class="ac-chip" data-stale-at="${recorded + STALE_MS}">expires in …</span>` : "",
+  ].join("");
+  return `<div class="acall" role="alert">
+    <div class="ac-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 21 19H3z"/><path d="M12 10v4M12 17h.01"/></svg></div>
+    <div class="ac-body">
+      <div class="ac-title">Approval needed · apply migration to prod${repo ? ` <span class="ac-sub">${esc(repo)}${pr ? ` #${pr}` : ""}</span>` : ""}</div>
+      <div class="ac-desc">The agent finished its rehearsal and is paused at <span class="mono">${esc(a.tool || "apply_migration")}</span>. Nothing changes in prod until someone decides in TrueForge.</div>
+      <div class="ac-facts">${facts}</div>
+    </div>
+    <div class="ac-actions">
+      <a class="btn ac-primary" target="_blank" rel="noopener" href="${esc(chatUrl(state.sessionId))}">Review &amp; decide in TrueForge ↗</a>
+      <button class="ac-link" type="button" id="showAppr">View request</button>
+    </div>
+  </div>`;
+}
+function startStaleCountdown() {
+  clearInterval(staleTimer);
+  const tick = () => document.querySelectorAll("[data-stale-at]").forEach((el) => {
+    const left = Number(el.dataset.staleAt) - Date.now();
+    el.textContent = left <= 0 ? "rehearsal expired: re-run needed" : left >= 3600e3 ? `rehearsal expires in ${Math.floor(left / 3600e3)}h ${Math.floor((left % 3600e3) / 60e3)}m` : `rehearsal expires in ${Math.floor(left / 60e3)}:${String(Math.floor((left % 60e3) / 1000)).padStart(2, "0")}`;
+    el.className = `ac-chip ${left <= 0 ? "bad" : left < 5 * 60e3 ? "warn" : ""}`;
+  });
+  tick();
+  if (document.querySelector("[data-stale-at]")) staleTimer = setInterval(tick, 1000);
+}
+
 function renderHeader() {
   const { summary: s } = state.mapped;
   const ses = state.session || {};
@@ -654,9 +701,10 @@ function renderHeader() {
 
   if (s.pendingApprovals.length) {
     const a = s.pendingApprovals[0];
-    $("alert").innerHTML = `<div class="alertbar"><b>Approval required</b><span><span class="mono">${esc(a.tool || "tool call")}</span> is waiting for a human decision.</span><button class="btn" type="button" id="showAppr">Show request</button><a class="btn gate" target="_blank" rel="noopener" href="${esc(chatUrl(state.sessionId))}">Decide in TrueForge ↗</a></div>`;
+    $("alert").innerHTML = approvalCallout(a, ses);
     $("showAppr").addEventListener("click", () => pick(a.id));
-  } else $("alert").innerHTML = "";
+    startStaleCountdown();
+  } else { $("alert").innerHTML = ""; startStaleCountdown(); }
 
   const reps = s.reports;
   $("rehearsals").innerHTML = reps.length ? `<span class="lbl mut" style="font-size:11.5px">attempts</span>` + reps.map((r) => {

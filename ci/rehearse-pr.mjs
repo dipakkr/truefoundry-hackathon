@@ -3,7 +3,10 @@
 // onto the PR as a commit status. The human approval still happens in TrueForge's own UI.
 //
 // Env: TRUEFORGE_BASE_URL (default http://localhost:8790), REPO (owner/name), PR_NUMBER, HEAD_SHA,
-//      GITHUB_TOKEN (statuses: write), AGENT (default migration-rehearsal), TIMEOUT_MIN (default 30).
+//      GITHUB_TOKEN (statuses: write), AGENT (default migration-rehearsal), TIMEOUT_MIN (default 30),
+//      VIEWER_URL (default http://localhost:8795: the commit status links to the run's live trace there).
+//      In GitHub Actions it also writes a job summary: which TrueForge session and agent ran, the agent's
+//      progress, and the outcome.
 // Runs on a self-hosted runner next to TrueForge, so nothing on the laptop is exposed to the internet.
 
 const TF = (process.env.TRUEFORGE_BASE_URL || 'http://localhost:8790').replace(/\/$/, '');
@@ -11,6 +14,10 @@ const { REPO, PR_NUMBER, HEAD_SHA, GITHUB_TOKEN } = process.env;
 const AGENT = process.env.AGENT || 'migration-rehearsal';
 const DEADLINE = Date.now() + Number(process.env.TIMEOUT_MIN || 30) * 60_000;
 const CONTEXT = 'Migration Rehearsal / prod data';
+const VIEWER = (process.env.VIEWER_URL || 'http://localhost:8795').replace(/\/$/, '');
+const { appendFileSync } = await import('node:fs');
+const timeline = [];
+function summary(md) { if (process.env.GITHUB_STEP_SUMMARY) try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + '\n'); } catch {} }
 
 for (const [k, v] of Object.entries({ REPO, PR_NUMBER, HEAD_SHA })) if (!v) fail(`${k} is not set`);
 
@@ -30,10 +37,12 @@ async function tf(method, path, body) {
 }
 
 let lastStatus = '';
+let lastDescription = '';
 async function status(state, description, targetUrl) {
   const key = `${state}|${description}`;
   if (key === lastStatus) return;
   lastStatus = key;
+  lastDescription = `${state === 'success' ? '✅' : state === 'pending' ? '⏳' : '❌'} ${description}`;
   log(`PR status → ${state}: ${description}`);
   if (!GITHUB_TOKEN) return;
   // Best effort, with retries: a flaky network to GitHub must never stop the rehearsal itself.
@@ -60,8 +69,19 @@ if (!(agents.data || []).some((a) => a.name === AGENT)) fail(`agent "${AGENT}" i
 
 const prompt = `Rehearse PR #${PR_NUMBER} in \`${REPO}\` against prod before we merge. If it's safe, apply it.`;
 const session = (await tf('POST', '/sessions', { agent: { name: AGENT } })).data;
-const link = `${TF}/`; // TrueForge UI: the run appears at the top of the agent's chat history
+const link = `${VIEWER}/#/s/${encodeURIComponent(session.id)}`; // live trace of this run in the dashboard
 log(`session ${session.id} started for ${REPO}#${PR_NUMBER}`);
+summary([
+  '## Migration Rehearsal started in TrueForge',
+  '',
+  '| | |', '|---|---|',
+  `| Pull request | ${REPO}#${PR_NUMBER} (\`${(HEAD_SHA || '').slice(0, 7)}\`) |`,
+  `| Agent | \`${AGENT}\` |`,
+  `| TrueForge session | \`${session.id}\` on ${TF} |`,
+  `| Live trace | ${link} |`,
+  `| Prompt | ${prompt} |`,
+  '',
+].join('\n'));
 await status('pending', 'Rehearsing this migration on a masked copy of prod…', link);
 // The create-turn call streams (SSE) until the turn pauses or ends, so start it in the background and
 // follow progress through the events endpoint instead.
@@ -80,23 +100,28 @@ while (Date.now() < DEADLINE) {
   for (const e of [...events].reverse()) {
     if (seen.has(e.id)) continue;
     seen.add(e.id);
-    if (e.type === 'model.message' && typeof e.content === 'string' && e.content.trim()) log(`agent: ${e.content.trim().split('\n')[0].slice(0, 160)}`);
+    if (e.type === 'model.message' && typeof e.content === 'string' && e.content.trim()) { const line = e.content.trim().split('\n')[0].slice(0, 160); log(`agent: ${line}`); timeline.push(`${new Date().toISOString().slice(11, 19)}  ${line}`); }
     if (e.type === 'tool.approval_required') await status('pending', 'Waiting for human approval in TrueForge (apply_migration)', link);
   }
   const newest = events[0];
   if (!newest || newest.type !== 'turn.done') continue;
   if ((newest.state?.required_actions || []).length) { await status('pending', 'Waiting for human approval in TrueForge (apply_migration)', link); continue; }
-  if (newest.state?.status === 'error') { await status('error', `Agent run failed: ${newest.state.message || 'error'}`, link); process.exit(1); }
+  if (newest.state?.status === 'error') { await status('error', `Agent run failed: ${newest.state.message || 'error'}`, link); done(1); }
 
   // Finished: decide from apply_migration's response (newest first).
   const applyResp = events.find((e) => e.type === 'tool.response' && /committed|POLICY_REFUSED|EFFECTS_MISMATCH|REHEARSAL_|User denied/.test(text(e)));
   const body = applyResp ? text(applyResp) : '';
-  if (/"status":"committed"/.test(body)) { await status('success', 'Rehearsed, approved, applied and verified on prod', link); process.exit(0); }
-  if (/User denied/.test(body)) { await status('failure', 'Approval denied in TrueForge. Prod unchanged', link); process.exit(1); }
+  if (/"status":"committed"/.test(body)) { await status('success', 'Rehearsed, approved, applied and verified on prod', link); done(0); }
+  if (/User denied/.test(body)) { await status('failure', 'Approval denied in TrueForge. Prod unchanged', link); done(1); }
   const code = (body.match(/POLICY_REFUSED|EFFECTS_MISMATCH|REHEARSAL_[A-Z_]+/) || [])[0];
-  if (code) { await status('failure', `pgwarden refused (${code}). Prod unchanged`, link); process.exit(1); }
+  if (code) { await status('failure', `pgwarden refused (${code}). Prod unchanged`, link); done(1); }
   await status('failure', 'Not applied: rehearsal did not pass or the agent stopped. See the PR comment', link);
-  process.exit(1);
+  done(1);
 }
 await status('error', 'Timed out waiting for the rehearsal or the approval', link);
-process.exit(1);
+done(1);
+
+function done(code) {
+  summary(['### Outcome', '', lastDescription, '', '### Agent progress', '', '```', ...timeline, '```'].join('\n'));
+  process.exit(code);
+}

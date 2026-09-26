@@ -36,12 +36,22 @@ async function status(state, description, targetUrl) {
   lastStatus = key;
   log(`PR status → ${state}: ${description}`);
   if (!GITHUB_TOKEN) return;
-  const res = await fetch(`https://api.github.com/repos/${REPO}/statuses/${HEAD_SHA}`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${GITHUB_TOKEN}`, accept: 'application/vnd.github+json' },
-    body: JSON.stringify({ state, description: description.slice(0, 140), context: CONTEXT, target_url: targetUrl }),
-  });
-  if (!res.ok) log(`! could not set commit status: HTTP ${res.status}`);
+  // Best effort, with retries: a flaky network to GitHub must never stop the rehearsal itself.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`https://api.github.com/repos/${REPO}/statuses/${HEAD_SHA}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${GITHUB_TOKEN}`, accept: 'application/vnd.github+json' },
+        body: JSON.stringify({ state, description: description.slice(0, 140), context: CONTEXT, target_url: targetUrl }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) log(`! could not set commit status: HTTP ${res.status}`);
+      return;
+    } catch (e) {
+      log(`! commit status attempt ${attempt}/3 failed: ${e.cause?.code || e.message}`);
+      if (attempt < 3) await sleep(2000 * attempt);
+    }
+  }
 }
 
 // ---- start ----

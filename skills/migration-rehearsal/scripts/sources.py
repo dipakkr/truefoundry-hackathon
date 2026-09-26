@@ -21,13 +21,14 @@ def _text(item):
     return getattr(item, "text", None) or (item.get("text") if isinstance(item, dict) else None)
 
 
-async def export_tables(tables, page_size=5000):
-    """Full masked copy of each table: {table: (columns, rows)}. Asserts nothing was dropped."""
+async def export_tables(tables, page_size=5000, server="pgwarden"):
+    """Full masked copy of each table: {table: (columns, rows)}. Asserts nothing was dropped.
+    `server` is the pgwarden MCP server name for this project (one pgwarden per onboarded project)."""
     out = {}
     for t in tables:
         rows, page, cols, total = [], 0, None, None
         while True:
-            r = await call_tool("pgwarden", "export_table", body={"table": t, "page": page, "page_size": page_size})
+            r = await call_tool(server, "export_table", body={"table": t, "page": page, "page_size": page_size})
             if isinstance(r, str):
                 r = json.loads(r)
             cols, total = r["columns"], r["total_rows"]

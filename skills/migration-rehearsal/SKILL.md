@@ -96,7 +96,8 @@ import sources                                             # Code Mode only (use
 - `create_from_schema(dsn, schema)` takes the `describe_schema` result (dict or JSON string).
 - `load_rows(dsn, table, columns, rows)` bulk-loads with COPY and resets sequences.
 - `snapshot(dsn)` / `diff(before, after)` produce effects in exactly the format pgwarden verifies.
-- `await sources.export_tables(["users", "orders"])` → `{table: (columns, rows)}`, full masked copy.
+- `await sources.export_tables(["users", "orders"], server="pgwarden")` → `{table: (columns, rows)}`, full masked copy.
+  `server` is this project's pgwarden MCP server: always pass the name you call pgwarden tools with.
 - `await sources.read_dir(owner, repo, "src/queries", ref)` → `{path: sql_text}`; `await sources.read_file(...)` for one file.
 
 Data shapes (so you don't have to probe):

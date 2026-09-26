@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Client } from '../pgwarden/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js';
 import { StreamableHTTPClientTransport } from '../pgwarden/node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js';
+import pg from 'pg';
 import { bold, env, green, red } from './lib/common.js';
 
 const url = `http://localhost:${env('PGWARDEN_PORT') ?? '8787'}/mcp`;
@@ -45,7 +46,15 @@ const cases: Array<[string, Record<string, unknown>, string]> = [
   ['Understate the damage on the approval card (users -13)', { sql: FIX, rehearsal_id: passing, declared_effects: { ...TRUE_EFFECTS, row_deltas: { users: -13, orders: 0 } } }, 'EFFECTS_MISMATCH'],
 ];
 
-console.log(bold('\npgwarden guardrails: live attacks on the only door to prod\n'));
+// 0. Predict before running anything (Atlas/Squawk-style, data-aware).
+console.log(bold('\n1. analyze_migration on the PR, before anything runs\n'));
+const an = (await call('analyze_migration', { sql: PR_SQL })).body;
+for (const f of (an.findings || []).filter((f: any) => f.severity !== 'info')) {
+  const ev = f.evidence?.duplicate_groups != null ? ` (${f.evidence.duplicate_groups} duplicate groups on prod)` : f.evidence?.row_count != null ? ` (${f.evidence.row_count} rows)` : '';
+  console.log(`  ${f.severity === 'error' ? red('✗ ' + f.code.padEnd(7)) : '! ' + f.code.padEnd(7)} ${String(f.message).split('.')[0]}${ev}`);
+}
+
+console.log(bold('\n2. Attacks on apply_migration, the only door to prod\n'));
 let pass = 0;
 for (const [name, args, expected] of cases) {
   const t = Date.now();
@@ -57,9 +66,24 @@ for (const [name, args, expected] of cases) {
   console.log(`  ${ok ? green('✓') : red('✗')} ${name.padEnd(58)} ${ok ? green(code) : red(code)}${detail}  ${Date.now() - t}ms`);
 }
 
+// 3. Data drift: a new case-variant duplicate arrives after the rehearsal passed.
+console.log(bold('\n3. Prod changes after the rehearsal passed\n'));
+const db = new pg.Client({ connectionString: env('DATABASE_URL') });
+await db.connect();
+const fresh = (await call('record_rehearsal', { sql: FIX, verdict: 'pass', report })).body.rehearsal_id;
+const ins = await db.query(`INSERT INTO users (email, full_name, phone, city) SELECT upper(email), full_name, phone, city FROM users ORDER BY id LIMIT 1 RETURNING id`);
+const drift = await call('apply_migration', { sql: FIX, rehearsal_id: fresh, declared_effects: TRUE_EFFECTS, evidence_summary: 'guardrails demo' });
+await db.query('DELETE FROM users WHERE id = $1', [ins.rows[0].id]);
+await db.query(`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT max(id) FROM users))`);
+await db.end();
+const dcode = drift.error ? drift.body?.code : 'NOT REFUSED';
+const dok = dcode === 'EFFECTS_MISMATCH';
+if (dok) pass++;
+console.log(`  ${dok ? green('✓') : red('✗')} ${'A 15th duplicate signs up; the honest, approved fix now deletes 15'.padEnd(58)} ${dok ? green(dcode) : red(dcode)} (rolled back; test row removed)`);
+
 const after = (await call('verify_prod_state', {})).body;
 const same = before.schema_fingerprint === after.schema_fingerprint && JSON.stringify(before.row_counts) === JSON.stringify(after.row_counts);
 console.log(`\n  ${same ? green('✓') : red('✗')} prod unchanged: users ${after.row_counts.users}, orders ${after.row_counts.orders}, version ${after.last_applied_version}, schema fingerprint ${String(after.schema_fingerprint).slice(0, 12)}… ${same ? '(identical before and after)' : red('(CHANGED!)')}`);
-console.log(bold(`\n${pass}/${cases.length} attacks refused${same ? ', prod untouched' : ''}.\n`));
+console.log(bold(`\n${pass}/${cases.length + 1} attacks refused${same ? ', prod untouched' : ''}.\n`));
 await client.close();
-process.exit(pass === cases.length && same ? 0 : 1);
+process.exit(pass === cases.length + 1 && same ? 0 : 1);

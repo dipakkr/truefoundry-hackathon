@@ -8,7 +8,7 @@
 
 ## Writeup
 
-*Also as a standalone file: [WRITEUP.md](WRITEUP.md).*
+*Also as a standalone file: [WRITEUP.md](WRITEUP.md) · [WRITEUP.pdf](WRITEUP.pdf) (2 pages, with dashboard states and edge cases).*
 
 **The problem.** Migrations are tested in CI or on a UAT database, but those don't have production's years of messy history, and migrations break on real data. In our demo app, [ledgerly](https://github.com/dipakkr/ledgerly) (a UPI payments ledger), a four-line PR "Enforce ledger integrity" passes CI. Deployed the usual way, statement by statement, it deletes 18 duplicate charges, **silently cascades into 11 customers' refund records (₹19,554)**, then crashes on statement 3 and leaves prod half-migrated. No test could see it: the bug is in the data, not the code.
 

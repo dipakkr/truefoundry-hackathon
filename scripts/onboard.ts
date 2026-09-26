@@ -9,7 +9,8 @@
 //   6. opens a PR on the app repo adding .github/workflows/migration-rehearsal.yml
 //   7. checks for an online self-hosted runner with the project's label
 // Idempotent: safe to re-run. Never prints secret values.
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import pg from 'pg';
 import { env, errMsg, isPlaceholder, parseArgs, printTable, REPO_ROOT, runCapture, AGENT_MAIN, type Row } from './lib/common.js';
@@ -172,9 +173,17 @@ if (existing.code === 0) {
     .replaceAll('{{MIGRATIONS_PATH}}', project.migrations_path).replaceAll('{{RUNNER_LABEL}}', project.runner_label);
   const branch = 'add-migration-rehearsal';
   const base = gh(['api', `repos/${project.repo}`, '--jq', '.default_branch']).stdout || 'main';
-  const sha = gh(['api', `repos/${project.repo}/git/ref/heads/${base}`, '--jq', '.object.sha']).stdout;
-  gh(['api', '-X', 'POST', `repos/${project.repo}/git/refs`, '-f', `ref=refs/heads/${branch}`, '-f', `sha=${sha}`]);
-  const put2 = gh(['api', '-X', 'PUT', `repos/${project.repo}/contents/${WF}`, '-f', `message=Add Migration Rehearsal: rehearse migration PRs on a masked copy of prod`, '-f', `branch=${branch}`, '-f', `content=${Buffer.from(yml).toString('base64')}`]);
+  // Committed with git over SSH: writing .github/workflows through the API needs a token with the `workflow` scope.
+  const dir = mkdtempSync(resolve(tmpdir(), 'onboard-'));
+  const git = (a: string[]) => runCapture('git', a, { cwd: dir });
+  const steps = [
+    runCapture('git', ['clone', '-q', '--depth', '1', '--branch', base, `git@github.com:${project.repo}.git`, dir]),
+    git(['checkout', '-q', '-B', branch]),
+    (mkdirSync(resolve(dir, '.github/workflows'), { recursive: true }), writeFileSync(resolve(dir, WF), yml), git(['add', WF])),
+    git(['commit', '-q', '-m', 'Add Migration Rehearsal: rehearse migration PRs on a masked copy of prod']),
+    git(['push', '-q', '-f', 'origin', branch]),
+  ];
+  const put2 = steps.find((x) => x.code !== 0) ?? { code: 0, stdout: '', stderr: '' };
   const body = [
     '## Summary',
     `Connects this repo to Migration Rehearsal. Every PR that changes \`${project.migrations_path}/\` is rehearsed on a masked copy of prod by the \`${project.agent}\` agent in TrueForge before it can reach production.`,

@@ -15,7 +15,8 @@
     "doctor": "tsx scripts/doctor.ts",
     "demo-pr": "tsx scripts/demo-pr.ts",
     "e2e": "tsx scripts/e2e.ts",
-    "postinstall": "npm --prefix pgwarden install --no-audit --no-fund"
+    "postinstall": "npm --prefix pgwarden install --no-audit --no-fund",
+    "guardrails": "tsx scripts/guardrails.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

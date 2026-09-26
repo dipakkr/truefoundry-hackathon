@@ -55,6 +55,22 @@ Open http://localhost:8790, pick the **migration-rehearsal** agent and send:
 
 Run `npm run reset` between runs to restore the demo data.
 
+## Run it from GitHub CI (no chat needed)
+
+Every PR that changes `migrations/**` can start a rehearsal automatically. See [`ci/rehearse-pr.mjs`](ci/rehearse-pr.mjs)
+and the workflow in the demo repo: [`shopkart/.github/workflows/migration-rehearsal.yml`](https://github.com/dipakkr/shopkart/blob/main/.github/workflows/migration-rehearsal.yml).
+
+```
+PR opened / updated  →  GitHub Actions job on a self-hosted runner next to TrueForge  →  TrueForge starts migration-rehearsal
+PR status:  pending "Rehearsing…"  →  pending "Waiting for human approval in TrueForge"  →  ✅ applied / ❌ denied or refused
+```
+
+- The runner only makes outgoing connections to GitHub, so TrueForge is never exposed to the internet.
+- The human approval stays in TrueForge's UI (Allow, or Deny with a reason). CI only starts the run and mirrors its state.
+- Safety for a public repo: the job skips PRs from forks, and fork PRs need maintainer approval before any workflow runs.
+- Set up a runner: `gh api -X POST repos/<you>/shopkart/actions/runners/registration-token`, then GitHub's `config.sh --labels migration-rehearsal` and `run.sh`.
+- Trigger by hand: `gh workflow run migration-rehearsal.yml -R <you>/shopkart -f pr=2`.
+
 ## Tested
 
 - **Fresh clone, README only** (26 Sep 2026, macOS, Node 25): `git clone` → `.env` → `npm install` → `seed` → `trueforge` + `pgwarden` → `setup` (all green) → `doctor` (nothing to fix) → full rehearsal ending in a server-verified commit in 190 s.

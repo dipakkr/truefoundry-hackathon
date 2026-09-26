@@ -98,6 +98,10 @@
 | Approval card not there by 3:40 | Narrator: "While it finishes, here's the Allow run from earlier" → tab 3, then come back for the live Deny |
 | Out of time at 4:30 | Skip the Sessions view; go straight to the closing slide | – |
 
+## TrueForge UI notes
+- **Deny needs a reason:** click Deny, type a short reason ("Not before the release freeze"), then Submit. Allow is one click.
+- **CI variant (optional opener):** instead of typing the prompt, push a commit to PR #1 or run `gh workflow run migration-rehearsal.yml -R dipakkr/shopkart -f pr=1`. The PR shows "Rehearsing…", then "Waiting for human approval in TrueForge", and flips to ✅ or ❌ after the decision. Open the run from TrueForge's chat history to approve.
+
 ## Rules
 - Never show Settings pages, `.env`, or terminal history.
 - The Driver doesn't scroll while the Narrator is pointing.

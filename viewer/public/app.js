@@ -1,28 +1,34 @@
 // Migration Rehearsal trace viewer (read-only). Renders TrueForge sessions as Langfuse-style traces.
 import { mapEvents } from "./mapEvents.mjs";
+import { sessionRow, aggregate, repoPrFromText, OUTCOMES, DEFAULT_REPO, REHEARSAL_AGENT } from "./dashboard.mjs";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const params = new URLSearchParams(location.search);
 const FIXTURE = params.has("fixture");
 const POLL_MS = 1500;
+const PAGE_REFRESH_MS = 10000; // dashboard / lists
+const SESSION_TTL_MS = 8000; // re-fetch a session's events only if updated_at changed, or it is live and older than this
+const SESSION_PAGES = 4; // up to 100 sessions (25 per page)
 
 let cfg = { trueforgeUi: "http://localhost:8790" };
 let fixtureData = null;
-let timer = null;
-let listTimer = null;
-const rowCache = new Map();
+let timer = null; // trace live-follow
+let pageTimer = null; // list/dashboard refresh
+let routeSeq = 0;
 const state = { sessionId: null, session: null, mapped: null, selected: null, follow: true, view: "tree", dtab: "output", live: false, lastCount: -1 };
 
 /* ---------------- formatting ---------------- */
-const fdur = (msv) => msv == null ? "…" : msv < 1000 ? Math.round(msv) + "ms" : msv < 60000 ? (msv / 1000).toFixed(1) + "s" : Math.floor(msv / 60000) + "m" + String(Math.round((msv % 60000) / 1000)).padStart(2, "0") + "s";
-const ftok = (n) => n == null ? "–" : n >= 10000 ? (n / 1000).toFixed(1) + "k" : n.toLocaleString();
+const fdur = (msv) => msv == null ? "…" : msv < 1000 ? Math.round(msv) + "ms" : msv < 60000 ? (msv / 1000).toFixed(1) + "s" : msv < 3600e3 ? Math.floor(msv / 60000) + "m " + String(Math.round((msv % 60000) / 1000)).padStart(2, "0") + "s" : Math.floor(msv / 3600e3) + "h " + String(Math.round((msv % 3600e3) / 60000)).padStart(2, "0") + "m";
+const fdurOr = (msv, dash = "–") => msv == null ? dash : fdur(msv);
+const ftok = (n) => n == null ? "–" : n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 10000 ? (n / 1000).toFixed(1) + "k" : n.toLocaleString();
 const fusd = (n) => n == null ? "–" : "$" + (n < 0.01 ? n.toFixed(4) : n.toFixed(2));
 const ftime = (t) => t == null ? "–" : new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const fdate = (iso) => { const d = new Date(iso); return isNaN(d) ? "–" : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }); };
-function ago(iso) { const s = (Date.now() - Date.parse(iso)) / 1000; if (!isFinite(s)) return ""; if (s < 60) return Math.max(0, Math.round(s)) + "s ago"; if (s < 3600) return Math.round(s / 60) + "m ago"; if (s < 86400) return Math.round(s / 3600) + "h ago"; return Math.round(s / 86400) + "d ago"; }
+function ago(iso) { const s = (Date.now() - (typeof iso === "number" ? iso : Date.parse(iso))) / 1000; if (!isFinite(s)) return ""; if (s < 60) return Math.max(0, Math.round(s)) + "s ago"; if (s < 3600) return Math.round(s / 60) + "m ago"; if (s < 86400) return Math.round(s / 3600) + "h ago"; return Math.round(s / 86400) + "d ago"; }
 const short = (id) => id && id.length > 14 ? id.slice(0, 6) + "…" + id.slice(-6) : id;
 const chatUrl = (sid) => `${cfg.trueforgeUi}/sessions/${encodeURIComponent(sid)}`;
+const traceHref = (sid, obs) => "#/s/" + encodeURIComponent(sid) + (obs ? "?o=" + encodeURIComponent(obs) : "");
 
 function jsonHtml(v) {
   let s;
@@ -75,110 +81,413 @@ async function fetchSession(sid) {
 }
 async function fetchSessions() {
   if (FIXTURE) return [(await loadFixture()).session];
-  return (await tf(`/api/v1/sessions?limit=25&order=desc`)).data || [];
-}
-async function fetchLatestTurn(sid) {
-  if (FIXTURE) { const t = (await loadFixture()).turns; return t.slice().sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0]; }
-  const r = await tf(`/api/v1/sessions/${encodeURIComponent(sid)}/turns?limit=25`);
-  return (r.data || []).slice().sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] || null;
+  const out = [];
+  let token = null;
+  for (let i = 0; i < SESSION_PAGES; i++) {
+    const q = new URLSearchParams({ limit: "25" });
+    if (token) q.set("page_token", token);
+    const r = await tf(`/api/v1/sessions?${q}`);
+    out.push(...(r.data || []));
+    token = r.pagination?.next_page_token;
+    if (!token || !(r.data || []).length) break;
+  }
+  return out;
 }
 
 function setSource(kind, text) { $("srcDot").className = "dot " + kind; $("srcText").textContent = text; }
+const liveText = () => FIXTURE ? "fixture · sample-session.json" : "live · TrueForge";
 
-/* ---------------- session list ---------------- */
-function turnStatus(turn) {
-  const s = turn?.state?.status;
-  if (!s) return ["–", "idle"];
-  if (s === "running") return ["running", "run"];
-  if (s === "paused") return ["waiting for approval", "warn"];
-  if (s === "done") return (turn.state.required_actions || []).some((a) => a.type === "tool.approval_required") ? ["waiting for approval", "warn"] : ["done", "ok"];
-  if (s === "error") return ["error", "bad"];
-  if (s === "cancelled") return ["cancelled", "bad"];
-  return [s, "idle"];
+/* ---------------- shared session cache ---------------- */
+// id -> { updated_at, at, row, live }
+const cache = new Map();
+let rowsInflight = null;
+let lastRows = null;
+let lastRowsAt = 0;
+let lastRowsError = null;
+
+/** All sessions as table rows (sessionRow), newest first. Events fetched 3 sessions at a time. */
+function loadRows() {
+  if (rowsInflight) return rowsInflight;
+  rowsInflight = (async () => {
+    try {
+      const sessions = await fetchSessions();
+      const now = Date.now();
+      const queue = sessions.filter((s) => {
+        const c = cache.get(s.id);
+        return !(c && c.updated_at === s.updated_at && (!c.live || now - c.at < SESSION_TTL_MS));
+      });
+      const worker = async () => {
+        for (let s; (s = queue.shift());) {
+          try {
+            const m = mapEvents(await fetchAllEvents(s.id));
+            const row = sessionRow(s, m);
+            cache.set(s.id, { updated_at: s.updated_at, at: Date.now(), row, live: m.summary.running || m.summary.pendingApprovals.length > 0 });
+          } catch (e) {
+            if (!cache.has(s.id)) cache.set(s.id, { updated_at: null, at: 0, row: failedRow(s, e), live: true });
+          }
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      const rows = sessions.map((s) => cache.get(s.id)?.row).filter(Boolean).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+      lastRows = rows; lastRowsAt = Date.now(); lastRowsError = null;
+      setSource("on", liveText());
+      updateShellFromRows(rows);
+      return rows;
+    } catch (e) {
+      lastRowsError = e;
+      setSource("bad", "TrueForge unreachable");
+      throw e;
+    } finally { rowsInflight = null; }
+  })();
+  return rowsInflight;
+}
+function failedRow(s, e) {
+  return { id: s.id, createdAt: Date.parse(s.created_at), prompt: s.title || "", agent: s.agent?.name ?? "inline", isRehearsal: s.agent?.name === REHEARSAL_AGENT, outcome: { key: "error", label: "load failed", cls: "err", full: String(e.message || e) }, latencyMs: s.metrics?.total_duration_ms ?? null, ttaMs: null, pending: 0, tokens: 0, toolCalls: null, sandboxRuns: null, approvals: [], ...repoPrFromText(s.title) };
 }
 
-async function renderList() {
-  stopPolling();
-  state.sessionId = null;
-  document.title = "Migration Rehearsal Traces";
-  const app = $("app");
-  app.innerHTML = `<div class="listhead"><h1>Sessions</h1><span class="mut" id="listNote"></span><span class="sp"></span><button class="btn" id="refreshBtn" type="button">Refresh</button></div>
-    <div class="tbl"><table class="sessions"><thead><tr><th>session</th><th>agent</th><th>started</th><th class="r">duration</th><th>status</th><th class="r">turns</th><th class="r">tool calls</th><th class="r">cost</th></tr></thead><tbody id="rows"><tr><td colspan="8" class="mut">Loading…</td></tr></tbody></table></div>
+function updateShellFromRows(rows) {
+  const newest = rows.find((r) => r.isRehearsal && r.repo) || rows.find((r) => r.repo);
+  $("projRepo").textContent = newest?.repo || DEFAULT_REPO;
+  if (!state.sessionId) setPrLink(newest);
+  setApprBadge(rows.reduce((n, r) => n + (r.pending || 0), 0));
+}
+function setApprBadge(pending) {
+  const b = $("apprBadge");
+  b.hidden = !pending; b.textContent = pending ? String(pending) : "";
+}
+function setPrLink(row) {
+  const a = $("prLink");
+  if (row?.url) { a.href = row.url; a.classList.remove("disabled"); a.title = `GitHub PR · ${row.repo}#${row.pr}`; $("prLabel").textContent = `GitHub PR #${row.pr}`; }
+  else { a.href = "#"; a.classList.add("disabled"); a.title = "No PR found in the session prompt"; $("prLabel").textContent = "GitHub PR"; }
+}
+
+/* ---------------- shell ---------------- */
+function setActiveNav(key) {
+  document.querySelectorAll(".nav[data-nav]").forEach((a) => { if (a.dataset.nav === key) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+}
+function stopPolling() { clearTimeout(timer); timer = null; clearInterval(pageTimer); pageTimer = null; }
+function startPageRefresh(fn) { pageTimer = setInterval(() => { if (!document.hidden) fn(true); }, PAGE_REFRESH_MS); }
+
+function pageHead(crumb, title, extra = "") {
+  return `<div class="phead"><div><div class="crumb">${crumb}</div><h1>${esc(title)}</h1></div><span class="sp"></span>${extra}<span class="meta-note" id="updNote"></span><button class="btn" id="refreshBtn" type="button">Refresh</button></div>`;
+}
+function setUpdated() { const n = $("updNote"); if (n) n.textContent = lastRowsAt ? `updated ${ftime(lastRowsAt)}` : ""; }
+
+function errorBanner(e) {
+  return `<div class="banner bad"><b>TrueForge is not reachable through the viewer proxy.</b><span>${esc(e?.message || e)}</span><span class="mut">Start it with <span class="mono">npx @truefoundry/trueforge@latest</span> (port 8790) or set <span class="mono">TRUEFORGE_BASE_URL</span>. To see the viewer with sample data, open <a href="?fixture=1">?fixture=1</a>.</span></div>`;
+}
+
+/* ---------------- status pill + table rows ---------------- */
+function pill(o) {
+  const title = o.full && o.full !== o.label ? ` title="${esc(o.full)}"` : "";
+  return `<span class="st ${esc(o.cls)}"${title}>${esc(o.label)}</span>`;
+}
+function ttaCell(r) {
+  if (r.pending) return '<span class="st warn">waiting</span>';
+  return r.ttaMs == null ? '<span class="mut">–</span>' : esc(fdur(r.ttaMs));
+}
+const TRACE_COLS = 9;
+function traceRowHtml(r) {
+  return `<tr data-id="${esc(r.id)}" tabindex="0">
+    <td class="ts" title="${esc(new Date(r.createdAt).toISOString())}">${esc(fdate(r.createdAt))}<span class="mut">${esc(ago(r.createdAt))}</span></td>
+    <td class="nmcell"><span class="p" title="${esc(r.prompt)}">${esc(r.prompt || "(no prompt)")}</span><span class="id">${esc(r.id)}</span></td>
+    <td class="m">${esc(r.agent)}</td>
+    <td>${pill(r.outcome)}</td>
+    <td class="r">${esc(fdurOr(r.latencyMs))}</td>
+    <td class="r">${ttaCell(r)}</td>
+    <td class="r">${esc(ftok(r.tokens))}</td>
+    <td class="r">${esc(r.toolCalls ?? "–")}</td>
+    <td class="r">${esc(r.sandboxRuns ?? "–")}</td></tr>`;
+}
+function traceHeadHtml() {
+  return `<thead><tr><th>Timestamp</th><th>Name</th><th>Agent</th><th>Status</th><th class="r">Latency</th><th class="r">Time to card</th><th class="r">Tokens</th><th class="r">Tool calls</th><th class="r">Sandbox runs</th></tr></thead>`;
+}
+function skeletonRows(cols, n = 5) {
+  return Array.from({ length: n }, () => `<tr class="nodata-row">${Array.from({ length: cols }, (_, i) => `<td><span class="skel line" style="width:${i === 1 ? 80 : 60}%"></span></td>`).join("")}</tr>`).join("");
+}
+function bindRowNav(tbody) {
+  tbody.addEventListener("click", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) location.hash = tr.dataset.href || traceHref(tr.dataset.id); });
+  tbody.addEventListener("keydown", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr && e.key === "Enter") location.hash = tr.dataset.href || traceHref(tr.dataset.id); });
+}
+
+/* ---------------- dashboard ---------------- */
+const KPI_DEFS = [
+  { k: "runs", label: "Rehearsals run", href: "#/rehearsals", sub: () => "agent migration-rehearsal" },
+  { k: "applied", label: "Applied", sw: "applied", href: "#/rehearsals?status=applied", sub: () => "committed to prod" },
+  { k: "denied", label: "Denied", sw: "denied", href: "#/rehearsals?status=denied", sub: () => "by a human" },
+  { k: "refused", label: "Refused by server", sw: "refused", href: "#/rehearsals?status=refused", sub: () => "by pgwarden" },
+  { k: "pendingApprovals", label: "Pending approval", sw: "waiting", href: "#/approvals?d=pending", sub: () => "waiting on a human" },
+  { k: "medianTtaMs", label: "Median time to approval card", fmt: (v) => fdurOr(v), sub: (k) => `agent working time · ${k.ttaN} run${k.ttaN === 1 ? "" : "s"}`, href: "#/approvals" },
+  { k: "tokens", label: "Total tokens", fmt: ftok, sub: () => "rehearsal runs" },
+];
+
+async function renderDashboard() {
+  const tok = routeSeq;
+  setActiveNav("dashboard");
+  document.title = "Dashboard · Migration Rehearsal";
+  $("app").innerHTML = pageHead("Overview", "Dashboard") + `
+    <div class="kpis" id="kpis">${KPI_DEFS.map((d) => `<div class="kpi"><span class="k">${esc(d.label)}</span><span class="skel big"></span><span class="skel line" style="width:70%"></span></div>`).join("")}</div>
+    <div class="grid2">
+      <section class="card"><header><h2>Runs by outcome over time</h2><span class="s">rehearsal runs per hour, local time</span></header><div class="body"><div class="chart" id="chHours"><div class="skel block"></div></div><div class="legend" id="lgHours"></div></div></section>
+      <section class="card"><header><h2>Time to approval card</h2><span class="s">per run: prompt → agent asks a human (colour = the human's decision)</span></header><div class="body"><div class="chart" id="chTta"><div class="skel block"></div></div><div class="legend" id="lgTta"></div></div></section>
+    </div>
+    <section class="card flush" style="margin-top:8px"><header><h2>Recent traces</h2><span class="s">all agents</span><span class="sp"></span><a href="#/traces">View all traces</a></header>
+      <div class="body"><div class="tbl"><table class="dtable">${traceHeadHtml()}<tbody id="rows">${skeletonRows(TRACE_COLS, 5)}</tbody></table></div></div></section>
     <div id="listMsg"></div>`;
-  $("refreshBtn").addEventListener("click", () => loadList());
-  $("rows").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) location.hash = "#/s/" + tr.dataset.id; });
-  await loadList();
-  listTimer = setInterval(() => { if (!document.hidden) loadList(true); }, 5000);
-}
+  $("refreshBtn").addEventListener("click", () => load(false));
+  bindRowNav($("rows"));
+  let resizeT = null;
+  const onResize = () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (tok === routeSeq && lastRows) drawCharts(lastRows); }, 120); };
+  window.addEventListener("resize", onResize);
+  const off = () => { window.removeEventListener("resize", onResize); window.removeEventListener("hashchange", off); };
+  window.addEventListener("hashchange", off);
 
-async function loadList(quiet) {
-  let sessions;
-  try {
-    sessions = await fetchSessions();
-    setSource("on", FIXTURE ? "fixture: sample-session.json" : `live · ${cfg.trueforgeApi || "TrueForge"}`);
-  } catch (e) {
-    setSource("bad", "TrueForge unreachable");
-    $("rows").innerHTML = `<tr><td colspan="8" class="bad">Could not load sessions: ${esc(e.message)}</td></tr>`;
-    $("listMsg").innerHTML = `<div class="banner"><b>TrueForge is not reachable through the viewer proxy.</b><span class="mut">Start it with <span class="mono">npx @truefoundry/trueforge@latest</span> (port 8790) or set <span class="mono">TRUEFORGE_BASE_URL</span>. To see the viewer with sample data, open <a href="?fixture=1">?fixture=1</a>.</span></div>`;
-    return;
-  }
-  sessions.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-  $("listNote").textContent = sessions.length ? `${sessions.length} latest` : "";
-  if (!sessions.length) {
-    $("rows").innerHTML = `<tr><td colspan="8" class="mut">No sessions yet.</td></tr>`;
-    $("listMsg").innerHTML = `<div class="banner"><span>Run the <span class="mono">migration-rehearsal</span> agent in the TrueForge chat and its session shows up here. Sample data: <a href="?fixture=1">?fixture=1</a>.</span></div>`;
-    return;
-  }
-  $("listMsg").innerHTML = "";
-  const prev = new Map([...document.querySelectorAll("#rows tr[data-id]")].map((tr) => [tr.dataset.id, tr]));
-  $("rows").innerHTML = sessions.map((s) => {
-    const old = prev.get(s.id);
-    const keep = (k) => old?.querySelector(`[data-k="${k}"]`)?.innerHTML ?? '<span class="mut">…</span>';
-    return `<tr data-id="${esc(s.id)}" tabindex="0">
-      <td class="m" title="${esc(s.id)}">${esc(short(s.id))}${s.title ? `<div class="mut" style="font-family:var(--sans);font-size:11.5px;max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.title)}</div>` : ""}</td>
-      <td>${esc(s.agent?.name ?? (s.agent?.type === "inline" ? "inline agent" : s.agent?.id ?? "–"))}</td>
-      <td title="${esc(s.created_at)}">${esc(fdate(s.created_at))} <span class="mut">${esc(ago(s.created_at))}</span></td>
-      <td class="r">${esc(fdur(s.metrics?.total_duration_ms))}</td>
-      <td data-k="st">${keep("st")}</td>
-      <td class="r">${esc(s.metrics?.total_turns ?? "–")}</td>
-      <td class="r" data-k="tc">${keep("tc")}</td>
-      <td class="r">${esc(fusd(s.metrics?.total_cost_in_usd))}</td></tr>`;
-  }).join("");
-  document.querySelectorAll("#rows tr[data-id]").forEach((tr) => tr.addEventListener("keydown", (e) => { if (e.key === "Enter") location.hash = "#/s/" + tr.dataset.id; }));
-  // lazily fill status + tool call counts (Session has neither); cached per updated_at
-  const queue = sessions.slice();
-  const worker = async () => {
-    for (let s; (s = queue.shift());) {
-      const row = document.querySelector(`#rows tr[data-id="${CSS.escape(s.id)}"]`);
-      if (!row) continue;
-      const c = rowCache.get(s.id);
-      if (c && c.updated_at === s.updated_at && c.cls !== "run") { row.querySelector('[data-k="st"]').innerHTML = c.st; row.querySelector('[data-k="tc"]').textContent = c.tc; continue; }
-      try {
-        const [turn, evs] = await Promise.all([fetchLatestTurn(s.id), fetchAllEvents(s.id)]);
-        const m = mapEvents(evs);
-        const [txt, cls] = turnStatus(turn);
-        const st = turn?.state?.status === "running" ? [txt, cls] : m.summary.pendingApprovals.length ? ["waiting for approval", "warn"] : m.summary.statusClass !== "idle" ? [m.summary.status, m.summary.statusClass] : [txt, cls];
-        const html = `<span class="st ${st[1]}">${esc(st[0])}</span>`;
-        rowCache.set(s.id, { updated_at: s.updated_at, st: html, tc: String(m.summary.toolCalls), cls: st[1] });
-        row.querySelector('[data-k="st"]').innerHTML = html;
-        row.querySelector('[data-k="tc"]').textContent = m.summary.toolCalls;
-      } catch { row.querySelector('[data-k="st"]').innerHTML = '<span class="mut">?</span>'; }
+  async function load(quiet) {
+    let rows;
+    try { rows = await loadRows(); } catch (e) {
+      if (tok !== routeSeq) return;
+      if (!quiet || !lastRows) { $("listMsg").innerHTML = errorBanner(e); $("rows").innerHTML = `<tr class="nodata-row"><td colspan="${TRACE_COLS}" class="nodata">Could not load sessions.</td></tr>`; }
+      return;
     }
-  };
-  await Promise.all([worker(), worker(), worker(), worker()]);
+    if (tok !== routeSeq) return;
+    $("listMsg").innerHTML = "";
+    const agg = aggregate(rows);
+    $("kpis").innerHTML = KPI_DEFS.map((d) => {
+      const v = agg.kpis[d.k];
+      const text = d.fmt ? d.fmt(v) : String(v ?? "–");
+      const tag = d.href ? "a" : "div";
+      return `<${tag} class="kpi"${d.href ? ` href="${d.href}"` : ""}><span class="k">${d.sw ? `<span class="sw ${d.sw}"></span>` : ""}${esc(d.label)}</span><span class="v">${esc(text)}</span><span class="s">${esc(d.sub(agg.kpis))}</span></${tag}>`;
+    }).join("");
+    $("rows").innerHTML = rows.length ? rows.slice(0, 5).map(traceRowHtml).join("") : `<tr class="nodata-row"><td colspan="${TRACE_COLS}" class="nodata">No sessions yet. Run the <span class="mono">migration-rehearsal</span> agent in TrueForge.</td></tr>`;
+    drawCharts(rows, agg);
+    setUpdated();
+  }
+  await load(false);
+  if (tok === routeSeq) startPageRefresh(load);
 }
 
-/* ---------------- trace view ---------------- */
-function stopPolling() { clearTimeout(timer); timer = null; clearInterval(listTimer); listTimer = null; }
+function drawCharts(rows, agg = aggregate(rows)) {
+  const h = $("chHours"), t = $("chTta");
+  if (h) { h.innerHTML = hoursChart(agg, h.clientWidth || 600); }
+  if (t) { t.innerHTML = ttaChart(agg, t.clientWidth || 600); }
+  const present = OUTCOMES.filter((o) => agg.hours.some((x) => x.counts[o.key]));
+  const lg = $("lgHours");
+  if (lg) lg.innerHTML = (present.length ? present : OUTCOMES.slice(0, 3)).map((o) => `<span><span class="sw ${o.key}"></span>${esc(o.label)}</span>`).join("") + (agg.outOfRange ? `<span>${agg.outOfRange} older run${agg.outOfRange === 1 ? "" : "s"} not shown</span>` : "");
+  const lt = $("lgTta");
+  if (lt) lt.innerHTML = agg.tta.length ? `<span><span class="sw applied"></span>allowed</span><span><span class="sw denied"></span>denied</span><span><svg width="18" height="9" aria-hidden="true"><line x1="0" y1="4.5" x2="18" y2="4.5" style="stroke:var(--ink2);stroke-dasharray:3 3"/></svg>median</span>` : "";
+}
 
-async function renderTrace(sid) {
-  stopPolling();
+const svgEsc = esc;
+function niceStep(max, target = 4) {
+  const raw = max / target;
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 5, 10]) if (m * p >= raw) return m * p;
+  return 10 * p;
+}
+function hoursChart(agg, W) {
+  const hours = agg.hours;
+  if (!hours.some((x) => x.total)) return `<div class="chart-empty">No rehearsal runs in the last ${hours.length} hours.</div>`;
+  const H = 240, ml = 32, mr = 8, mt = 12, mb = 28;
+  const iw = Math.max(W - ml - mr, 50), ih = H - mt - mb;
+  const maxV = Math.max(...hours.map((x) => x.total), 1);
+  const step = Math.max(1, Math.ceil(niceStep(maxV, 4)));
+  const top = Math.ceil(maxV / step) * step;
+  const y = (v) => mt + ih - (v / top) * ih;
+  const bw = iw / hours.length;
+  const barW = Math.max(Math.min(bw * 0.6, 40), 2);
+  let g = "";
+  for (let v = 0; v <= top; v += step) g += `<line class="grid" x1="${ml}" x2="${ml + iw}" y1="${y(v)}" y2="${y(v)}"/><text x="${ml - 6}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`;
+  const labelEvery = Math.max(1, Math.ceil(hours.length / Math.max(1, Math.floor(iw / 44))));
+  hours.forEach((hr, i) => {
+    const cx = ml + bw * i + bw / 2;
+    let acc = 0;
+    for (const o of OUTCOMES) {
+      const c = hr.counts[o.key];
+      if (!c) continue;
+      const y1 = y(acc + c), y0 = y(acc);
+      g += `<rect x="${(cx - barW / 2).toFixed(1)}" y="${y1.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(y0 - y1 - 1, 1).toFixed(1)}" rx="2" style="fill:var(--c-${o.key})"><title>${svgEsc(`${hourLabel(hr.t)}: ${c} ${o.label}`)}</title></rect>`;
+      acc += c;
+    }
+    if (hr.total) g += `<text x="${cx}" y="${y(hr.total) - 4}" text-anchor="middle" class="lbl-ink">${hr.total}</text>`;
+    if (i % labelEvery === 0 || i === hours.length - 1) g += `<text x="${cx}" y="${H - 8}" text-anchor="middle">${svgEsc(hourLabel(hr.t))}</text>`;
+  });
+  g += `<line class="axis" x1="${ml}" x2="${ml + iw}" y1="${y(0)}" y2="${y(0)}"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Rehearsal runs by outcome per hour">${g}</svg>`;
+}
+const hourLabel = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+function durTicks(max, maxTicks = 5) {
+  const steps = [1e3, 2e3, 5e3, 10e3, 15e3, 30e3, 60e3, 120e3, 300e3, 600e3, 900e3, 1800e3, 3600e3, 7200e3, 14400e3];
+  const step = steps.find((s) => max / s <= maxTicks) ?? Math.ceil(max / maxTicks / 3600e3) * 3600e3;
+  const out = [];
+  for (let v = 0; v <= max + 1; v += step) out.push(v);
+  if (out[out.length - 1] < max) out.push(out[out.length - 1] + step);
+  return out;
+}
+const fdurShort = (v) => v === 0 ? "0" : v < 60e3 ? Math.round(v / 1000) + "s" : v < 3600e3 ? Math.round(v / 60e3) + "m" : (v / 3600e3).toFixed(v % 3600e3 ? 1 : 0) + "h";
+
+function ttaChart(agg, W) {
+  const list = agg.tta;
+  if (!list.length) return `<div class="chart-empty">No approval decisions yet.<br>Decisions made in TrueForge show up here.</div>`;
+  const rowH = 26, ml = 148, mr = 72, mt = 8, mb = 26;
+  const H = mt + mb + rowH * list.length;
+  const iw = Math.max(W - ml - mr, 60);
+  const ticks = durTicks(Math.max(...list.map((a) => a.waitMs), 1000), Math.max(2, Math.min(6, Math.floor(iw / 56))));
+  const max = ticks[ticks.length - 1];
+  const x = (v) => ml + (v / max) * iw;
+  let g = "";
+  for (const v of ticks) g += `<line class="grid" x1="${x(v)}" x2="${x(v)}" y1="${mt}" y2="${H - mb}"/><text x="${x(v)}" y="${H - 8}" text-anchor="middle">${fdurShort(v)}</text>`;
+  const med = agg.kpis.medianTtaMs;
+  if (med != null) g += `<line class="medl" x1="${x(med)}" x2="${x(med)}" y1="${mt - 4}" y2="${H - mb}"><title>median ${svgEsc(fdur(med))}</title></line>`;
+  list.forEach((a, i) => {
+    const yc = mt + rowH * i + rowH / 2;
+    const ok = a.decision === "allow";
+    const res = a.result?.status === "refused" ? ` · refused${a.result.code ? " " + a.result.code : ""}` : a.result?.status === "committed" ? " · committed" : "";
+    const tip = `${a.sessionId}\napproval card after ${fdur(a.waitMs)} · ${ok ? "allowed" : a.decision === "deny" ? "denied" : a.decision}${res}`;
+    const w = Math.max(x(a.waitMs) - ml, 2);
+    g += `<a href="${traceHref(a.sessionId)}"><rect class="hit" x="0" y="${yc - rowH / 2}" width="${W}" height="${rowH}"/>
+      <text x="${ml - 8}" y="${yc + 3.5}" text-anchor="end" class="mono lbl-ink">${svgEsc(short(a.sessionId))}</text>
+      <rect x="${ml}" y="${yc - 6}" width="${w.toFixed(1)}" height="12" rx="2" style="fill:var(--c-${ok ? "applied" : "denied"})"/>
+      <text x="${ml + w + 6}" y="${yc + 3.5}" class="lbl-ink">${svgEsc(fdur(a.waitMs))}</text>
+      <title>${svgEsc(tip)}</title></a>`;
+  });
+  g += `<line class="axis" x1="${ml}" x2="${ml}" y1="${mt}" y2="${H - mb}"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Time to approval per decision">${g}</svg>`;
+}
+
+/* ---------------- traces / rehearsals list ---------------- */
+const listUi = { q: "", status: "all" };
+async function renderTraceList(kind) {
+  const tok = routeSeq;
+  const rehearsals = kind === "rehearsals";
+  setActiveNav(kind);
+  document.title = `${rehearsals ? "Rehearsals" : "Traces"} · Migration Rehearsal`;
+  const qs = new URLSearchParams(location.hash.split("?")[1] || "");
+  listUi.status = qs.get("status") || "all";
+  $("app").innerHTML = pageHead("Tracing", rehearsals ? "Rehearsals" : "Traces") + `
+    <div class="toolbar">
+      <label class="search"><svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input id="q" type="search" placeholder="Search name or id" value="${esc(listUi.q)}" aria-label="Search traces"></label>
+      <div class="fchips" id="fchips" role="group" aria-label="Filter by status"></div>
+    </div>
+    <div class="tbl"><table class="dtable">${traceHeadHtml()}<tbody id="rows">${skeletonRows(TRACE_COLS, 8)}</tbody></table></div>
+    <div class="tfoot"><span id="countNote"></span><span>${rehearsals ? `agent <span class="mono">${REHEARSAL_AGENT}</span> only` : "all agents"}</span></div>
+    <div id="listMsg"></div>`;
+  $("refreshBtn").addEventListener("click", () => load(false));
+  bindRowNav($("rows"));
+  let rowsAll = [];
+  const draw = () => {
+    const q = listUi.q.trim().toLowerCase();
+    const counts = Object.fromEntries(OUTCOMES.map((o) => [o.key, 0]));
+    const base = rowsAll.filter((r) => !q || r.prompt.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || r.agent.toLowerCase().includes(q));
+    for (const r of base) counts[r.outcome.key] = (counts[r.outcome.key] || 0) + 1;
+    const vis = listUi.status === "all" ? base : base.filter((r) => r.outcome.key === listUi.status);
+    $("fchips").innerHTML = `<button type="button" class="fchip" data-s="all" aria-pressed="${listUi.status === "all"}">All <span class="n">${base.length}</span></button>` +
+      OUTCOMES.filter((o) => counts[o.key] || listUi.status === o.key || ["applied", "denied", "refused", "waiting"].includes(o.key)).map((o) => `<button type="button" class="fchip" data-s="${o.key}" aria-pressed="${listUi.status === o.key}"><span class="sw ${o.key}"></span>${esc(o.label)} <span class="n">${counts[o.key] || 0}</span></button>`).join("");
+    $("rows").innerHTML = vis.length ? vis.map(traceRowHtml).join("") : `<tr class="nodata-row"><td colspan="${TRACE_COLS}" class="nodata">${rowsAll.length ? "No traces match the filter." : "No sessions yet."}</td></tr>`;
+    $("countNote").textContent = `${vis.length} of ${rowsAll.length} ${rehearsals ? "rehearsals" : "traces"}`;
+  };
+  $("q").addEventListener("input", (e) => { listUi.q = e.target.value; draw(); });
+  $("fchips").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (!b) return; listUi.status = b.dataset.s; draw(); });
+  async function load(quiet) {
+    let rows;
+    try { rows = await loadRows(); } catch (e) {
+      if (tok !== routeSeq) return;
+      if (!quiet || !lastRows) { $("listMsg").innerHTML = errorBanner(e); $("rows").innerHTML = `<tr class="nodata-row"><td colspan="${TRACE_COLS}" class="nodata">Could not load sessions.</td></tr>`; }
+      return;
+    }
+    if (tok !== routeSeq) return;
+    $("listMsg").innerHTML = "";
+    rowsAll = rehearsals ? rows.filter((r) => r.isRehearsal) : rows;
+    draw();
+    setUpdated();
+  }
+  await load(false);
+  if (tok === routeSeq) startPageRefresh(load);
+}
+
+/* ---------------- approvals ---------------- */
+const apprUi = { d: "all" };
+async function renderApprovals() {
+  const tok = routeSeq;
+  setActiveNav("approvals");
+  document.title = "Approvals · Migration Rehearsal";
+  const qs = new URLSearchParams(location.hash.split("?")[1] || "");
+  apprUi.d = qs.get("d") || "all";
+  $("app").innerHTML = pageHead("Tracing", "Approvals") + `
+    <div class="kpis" id="akpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:16px">${[0, 1, 2, 3].map(() => `<div class="kpi"><span class="skel line" style="width:50%"></span><span class="skel big"></span></div>`).join("")}</div>
+    <div class="toolbar"><div class="fchips" id="afchips" role="group" aria-label="Filter by decision"></div><span class="sp"></span><span class="meta-note">Approvals are decided in TrueForge. This page only reads them.</span></div>
+    <div class="tbl"><table class="dtable"><thead><tr><th>Requested</th><th>Tool</th><th>Decision</th><th>Reason</th><th class="r">Time to decision</th><th>Result</th><th>Trace</th></tr></thead><tbody id="rows">${skeletonRows(7, 5)}</tbody></table></div>
+    <div id="listMsg"></div>`;
+  $("refreshBtn").addEventListener("click", () => load(false));
+  bindRowNav($("rows"));
+  let all = [];
+  const decLabel = (d) => d === "allow" ? ["allowed", "ok"] : d === "deny" ? ["denied", "bad"] : d === "pending" ? ["pending", "warn"] : [d, "idle"];
+  const resultHtml = (a) => {
+    if (a.decision === "pending") return '<span class="mut">waiting on decision</span>';
+    const r = a.result;
+    if (!r) return '<span class="mut">–</span>';
+    if (r.status === "committed") return '<span class="st ok">committed</span>';
+    if (r.status === "refused") return `<span class="st refused">refused</span>${r.code ? ` <span class="mono mut" style="font-size:11px">${esc(r.code)}</span>` : ""}`;
+    if (r.status === "denied") return '<span class="mut">not executed</span>';
+    if (r.status === "ok") return '<span class="st ok">ok</span>';
+    return `<span class="st err">${esc(r.code || r.status)}</span>`;
+  };
+  const draw = () => {
+    const counts = { all: all.length, pending: 0, allow: 0, deny: 0 };
+    for (const a of all) counts[a.decision] = (counts[a.decision] || 0) + 1;
+    const vis = apprUi.d === "all" ? all : all.filter((a) => a.decision === apprUi.d);
+    $("afchips").innerHTML = [["all", "All"], ["pending", "Pending"], ["allow", "Allowed"], ["deny", "Denied"]].map(([k, l]) => `<button type="button" class="fchip" data-d="${k}" aria-pressed="${apprUi.d === k}">${k === "pending" ? '<span class="sw waiting"></span>' : k === "allow" ? '<span class="sw applied"></span>' : k === "deny" ? '<span class="sw denied"></span>' : ""}${l} <span class="n">${counts[k] || 0}</span></button>`).join("");
+    $("rows").innerHTML = vis.length ? vis.map((a) => {
+      const [dl, dc] = decLabel(a.decision);
+      return `<tr data-id="${esc(a.sessionId)}" data-href="${esc(traceHref(a.sessionId, a.id))}" tabindex="0">
+        <td class="ts" title="${esc(a.requestedAt ? new Date(a.requestedAt).toISOString() : "")}">${esc(a.requestedAt ? fdate(a.requestedAt) : "–")}<span class="mut">${esc(a.requestedAt ? ago(a.requestedAt) : "")}</span></td>
+        <td class="m">${esc(a.tool || "tool call")}</td>
+        <td><span class="st ${dc}">${esc(dl)}</span></td>
+        <td class="reason">${a.reason ? esc(a.reason) : '<span class="mut">–</span>'}</td>
+        <td class="r">${a.decision === "pending" ? esc(fdur(Math.max(0, Date.now() - (a.requestedAt ?? Date.now())))) + " <span class=\"mut\">so far</span>" : esc(fdurOr(a.waitMs))}</td>
+        <td>${resultHtml(a)}</td>
+        <td class="nmcell" style="min-width:160px;max-width:280px"><span class="p" title="${esc(a.prompt)}">${esc(a.prompt || "(no prompt)")}</span><span class="id">${esc(short(a.sessionId))}</span></td></tr>`;
+    }).join("") : `<tr class="nodata-row"><td colspan="7" class="nodata">${all.length ? "No approvals match the filter." : "No approval requests yet."}</td></tr>`;
+  };
+  $("afchips").addEventListener("click", (e) => { const b = e.target.closest("[data-d]"); if (!b) return; apprUi.d = b.dataset.d; draw(); });
+  async function load(quiet) {
+    let rows;
+    try { rows = await loadRows(); } catch (e) {
+      if (tok !== routeSeq) return;
+      if (!quiet || !lastRows) { $("listMsg").innerHTML = errorBanner(e); $("rows").innerHTML = `<tr class="nodata-row"><td colspan="7" class="nodata">Could not load sessions.</td></tr>`; }
+      return;
+    }
+    if (tok !== routeSeq) return;
+    $("listMsg").innerHTML = "";
+    all = rows.flatMap((r) => r.approvals.map((a) => ({ ...a, prompt: r.prompt })))
+      .sort((a, b) => (b.decision === "pending") - (a.decision === "pending") || (b.requestedAt ?? 0) - (a.requestedAt ?? 0));
+    const decided = all.filter((a) => a.waitMs != null).map((a) => a.waitMs).sort((x, y) => x - y);
+    const med = decided.length ? (decided.length % 2 ? decided[decided.length >> 1] : (decided[decided.length / 2 - 1] + decided[decided.length / 2]) / 2) : null;
+    const n = (d) => all.filter((a) => a.decision === d).length;
+    $("akpis").innerHTML = [
+      ["Pending", n("pending"), "waiting", "waiting on a human"],
+      ["Allowed", n("allow"), "applied", "approved in TrueForge"],
+      ["Denied", n("deny"), "denied", "rejected in TrueForge"],
+      ["Median time to decision", fdurOr(med), "", `request → human decision · ${decided.length} decision${decided.length === 1 ? "" : "s"} (incl. automated test runs)`],
+    ].map(([k, v, sw, s]) => `<div class="kpi"><span class="k">${sw ? `<span class="sw ${sw}"></span>` : ""}${esc(k)}</span><span class="v">${esc(v)}</span><span class="s">${esc(s)}</span></div>`).join("");
+    draw();
+    setUpdated();
+  }
+  await load(false);
+  if (tok === routeSeq) startPageRefresh(load);
+}
+/* ---------------- trace view ---------------- */
+
+async function renderTrace(sid, obsId) {
+  setActiveNav("traces");
   const fresh = state.sessionId !== sid;
   if (fresh) Object.assign(state, { sessionId: sid, session: null, mapped: null, selected: null, follow: true, dtab: "output", lastCount: -1 });
+  if (obsId) { state.selected = obsId; state.follow = false; }
   const app = $("app");
-  app.innerHTML = `<div class="crumb"><a href="${FIXTURE ? "?fixture=1#/" : "#/"}">Sessions</a><span>/</span><b id="sid">${esc(sid)}</b></div>
+  app.innerHTML = `<div class="crumb"><a href="#/traces">Traces</a><span>/</span><b id="sid">${esc(sid)}</b></div>
     <div class="thead"><h1 id="title">Loading…</h1><span class="st idle" id="status">–</span><div class="chips" id="hchips"></div><span style="flex:1"></span><a class="btn" id="chatBtn" target="_blank" rel="noopener" href="${esc(chatUrl(sid))}">Open chat in TrueForge</a></div>
     <div class="prod" id="prod"></div>
+    <details class="smeta" id="smeta"${metaOpen() ? " open" : ""}><summary>Metadata</summary><dl class="kv" id="smetaBody"></dl></details>
     <div id="alert"></div>
     <div class="rehearsals" id="rehearsals"></div>
     <div class="split">
@@ -231,7 +540,7 @@ async function refreshTrace(first) {
       if (state.follow && (state.mapped.summary.running || state.mapped.summary.pendingApprovals.length || !state.selected)) selectLatest();
       renderHeader(); renderTree(); renderDetail();
     }
-    setSource(state.mapped.summary.running ? "run" : "on", FIXTURE ? "fixture: sample-session.json" : state.mapped.summary.running ? "live · following turn" : "live · TrueForge");
+    setSource(state.mapped.summary.running ? "run" : "on", FIXTURE ? liveText() : state.mapped.summary.running ? "live · following turn" : "live · TrueForge");
   } catch (e) {
     setSource("bad", "TrueForge unreachable");
     if (first) $("tree").innerHTML = `<li class="empty bad">Could not load session: ${esc(e.message)}</li>`;
@@ -247,14 +556,17 @@ async function refreshTrace(first) {
 function renderHeader() {
   const { summary: s } = state.mapped;
   const ses = state.session || {};
-  document.title = `${ses.title || "Session"} · Migration Rehearsal Traces`;
+  document.title = `${ses.title || "Session"} · Migration Rehearsal`;
+  renderSessionMeta();
+  // keep the sidebar badge current while following a trace (other sessions from the last list load)
+  setApprBadge((lastRows || []).filter((r) => r.id !== state.sessionId).reduce((n, r) => n + (r.pending || 0), 0) + s.pendingApprovals.length);
   $("title").textContent = ses.title || `session ${short(state.sessionId)}`;
   const st = $("status"); st.textContent = s.status; st.className = "st " + s.statusClass;
   const cost = ses.metrics?.total_cost_in_usd ?? s.costUsd;
   $("hchips").innerHTML = [
     ["agent", ses.agent?.name ?? "–"],
     ["turns", s.turns],
-    ["latency", fdur(s.durationMs)],
+    ["latency", fdur(ses.metrics?.total_duration_ms || s.durationMs)],
     ["tokens", ftok(s.tokens)],
     ["cost", fusd(cost)],
     ["tool calls", s.toolCalls],
@@ -464,18 +776,75 @@ function traceOutput(n) {
   return h;
 }
 
+/* ---------------- session metadata (trace header) ---------------- */
+function metaOpen() { try { return localStorage.getItem("dr-meta") === "open"; } catch { return false; } }
+function renderSessionMeta() {
+  const box = $("smetaBody");
+  if (!box || !state.mapped) return;
+  const ses = state.session || {};
+  const s = state.mapped.summary;
+  const pr = repoPrFromText(ses.title || state.mapped.traces[0]?.input?.v || "");
+  setPrLink(pr);
+  const rows = [
+    ["session", state.sessionId],
+    ["agent", ses.agent?.name ?? (ses.agent?.type || "–")],
+    ["created", ses.created_at ? `${fdate(ses.created_at)} (${ago(ses.created_at)})` : "–"],
+    ["updated", ses.updated_at ? fdate(ses.updated_at) : "–"],
+    ["repo", pr.repo ?? "–"],
+    ["pull request", pr.url ? { href: pr.url, text: `#${pr.pr}` } : "–"],
+    ["turns", s.turns],
+    ["harness time", fdurOr(ses.metrics?.total_duration_ms)],
+    ["wall clock", fdurOr(s.durationMs)],
+    ["tokens in / out", `${ftok(s.tokensIn)} / ${ftok(s.tokensOut)}`],
+    ["cost", fusd(ses.metrics?.total_cost_in_usd ?? s.costUsd)],
+    ["created by", ses.created_by_subject?.subject_display_name ?? "–"],
+  ];
+  if (ses.metadata && Object.keys(ses.metadata).length) rows.push(["metadata", JSON.stringify(ses.metadata)]);
+  box.innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v && typeof v === "object" ? `<a href="${esc(v.href)}" target="_blank" rel="noopener">${esc(v.text)}</a>` : esc(v)}</dd>`).join("");
+}
+
 /* ---------------- routing ---------------- */
 async function route() {
-  const m = /^#\/s\/(.+)$/.exec(location.hash);
-  if (m) return renderTrace(decodeURIComponent(m[1]));
+  stopPolling();
+  routeSeq++;
+  closeMenu();
+  const h = location.hash || "#/";
+  const m = /^#\/s\/([^?]+)(?:\?o=(.+))?$/.exec(h);
+  if (m) return renderTrace(decodeURIComponent(m[1]), m[2] ? decodeURIComponent(m[2]) : null);
+  state.sessionId = null;
+  setPrLink(lastRows?.find((r) => r.isRehearsal && r.url) || lastRows?.find((r) => r.url) || null);
   if (FIXTURE && !location.hash) { const f = await loadFixture(); location.replace("#/s/" + f.session.id); return; }
-  return renderList();
+  const path = h.slice(1).split("?")[0];
+  if (path === "/traces") return renderTraceList("traces");
+  if (path === "/rehearsals") return renderTraceList("rehearsals");
+  if (path === "/approvals") return renderApprovals();
+  return renderDashboard();
+}
+
+/* ---------------- sidebar ---------------- */
+function closeMenu() { $("shell").classList.remove("open"); $("menuBtn").setAttribute("aria-expanded", "false"); }
+function initSidebar() {
+  const root = document.documentElement;
+  const setCollapsed = (c) => {
+    if (c) root.setAttribute("data-side", "collapsed"); else root.removeAttribute("data-side");
+    try { localStorage.setItem("dr-side", c ? "collapsed" : "expanded"); } catch {}
+    $("collapseBtn").title = c ? "Expand sidebar" : "Collapse sidebar";
+    $("collapseBtn").setAttribute("aria-label", $("collapseBtn").title);
+    if (lastRows && $("chHours")) setTimeout(() => drawCharts(lastRows), 0);
+  };
+  $("collapseBtn").addEventListener("click", () => setCollapsed(root.getAttribute("data-side") !== "collapsed"));
+  $("collapseBtn").title = root.getAttribute("data-side") === "collapsed" ? "Expand sidebar" : "Collapse sidebar";
+  $("menuBtn").addEventListener("click", () => { const open = !$("shell").classList.contains("open"); $("shell").classList.toggle("open", open); $("menuBtn").setAttribute("aria-expanded", String(open)); });
+  $("scrim").addEventListener("click", closeMenu);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+  $("side").addEventListener("click", (e) => { if (e.target.closest("a.nav")) closeMenu(); });
+  document.addEventListener("toggle", (e) => { if (e.target.id === "smeta") { try { localStorage.setItem("dr-meta", e.target.open ? "open" : "closed"); } catch {} } }, true);
 }
 
 (async function init() {
   try { cfg = { ...cfg, ...(await (await fetch("/config.json")).json()) }; } catch {}
   $("tfLink").href = cfg.trueforgeUi;
-  if (FIXTURE) $("homeLink").href = "?fixture=1#/";
+  initSidebar();
   window.addEventListener("hashchange", route);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && state.sessionId && timer) { clearTimeout(timer); refreshTrace(false); } });
   route();

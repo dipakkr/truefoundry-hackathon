@@ -59,7 +59,7 @@ fetch(`${TF}/api/v1/sessions/${session.id}/turns`, {
   method: 'POST',
   headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
   body: JSON.stringify({ input: [{ type: 'user.message', content: prompt }] }),
-}).then((res) => { if (!res.ok) log(`! create turn → HTTP ${res.status}`); return res.body?.cancel(); }).catch((e) => log(`! create turn: ${e.message}`));
+}).then(async (res) => { if (!res.ok) log(`! create turn → HTTP ${res.status}`); for await (const _ of res.body ?? []) { /* drain */ } }).catch((e) => log(`! create turn: ${e.message}`));
 
 // ---- follow the session ----
 const text = (e) => (typeof e.content === 'string' ? e.content : JSON.stringify(e.content ?? ''));

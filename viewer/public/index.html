@@ -170,6 +170,20 @@ button.chip{cursor:pointer} button.chip:hover{background:var(--hover)}
 .prod{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-bottom:8px}
 .prod .chip b{font-weight:600;font-family:var(--mono)}
 .prod .lbl{font-size:11.5px;color:var(--mut);margin-right:2px}
+.acall{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;margin-top:10px;padding:14px 16px;border:1px solid var(--gate);border-radius:10px;background:linear-gradient(0deg,var(--gate-bg),var(--gate-bg)),var(--panel);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.ac-icon{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--gate);color:var(--panel)}
+.ac-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ac-title{font-weight:650;font-size:14px;color:var(--ink)}
+.ac-sub{font-family:var(--mono);font-weight:500;font-size:12.5px;color:var(--mut);margin-left:6px}
+.ac-desc{font-size:12.5px;color:var(--ink2);margin-top:2px}
+.ac-facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ac-chip{font-size:11.5px;font-weight:600;border-radius:999px;padding:2px 9px;background:var(--panel);color:var(--ink2);border:1px solid var(--line2);font-variant-numeric:tabular-nums}
+.ac-chip.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)} .ac-chip.warn{color:var(--gate);border-color:var(--gate)} .ac-chip.bad{color:var(--bad);border-color:var(--bad);background:var(--bad-bg)}
+.ac-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.ac-primary{background:var(--gate);border-color:var(--gate);color:var(--panel);padding:7px 14px;font-size:13px}
+.ac-primary:hover{filter:brightness(1.08);background:var(--gate)}
+.ac-link{background:none;border:0;color:var(--mut);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
+@media (max-width:760px){.acall{grid-template-columns:auto 1fr}.ac-actions{grid-column:1/-1;flex-direction:row;align-items:center}}
 .alertbar{display:flex;gap:10px;align-items:center;margin-top:8px;border:1px solid var(--gate);background:var(--gate-bg);border-radius:8px;padding:7px 10px;font-size:12.5px;flex-wrap:wrap}
 .alertbar b{color:var(--gate)}
 .alertbar .btn{margin-left:auto}

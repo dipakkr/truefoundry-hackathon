@@ -5,7 +5,7 @@
 
 ## Stage setup
 - **Screen layout:** TrueForge chat (left, ~65%) and the GitHub PR (right, ~35%), side by side. Browser zoom 125%. Notifications off. Clean browser profile.
-- **Tabs ready, in order:** (1) TrueForge chat, a fresh session already warmed up; (2) GitHub PR #1; (3) backup session: Allow path; (4) a fresh chat with **migration-rehearsal-naive** (plus its saved session as backup); (5) TrueForge Sessions view; (6) AI Gateway trace; (7) closing slide.
+- **Tabs ready, in order:** (1) TrueForge chat, a fresh session already warmed up; (2) GitHub PR #1; (3) backup session: Allow path; (4) a fresh chat with **migration-rehearsal-naive** (plus its saved session as backup); (5) TrueForge Sessions view; (6) trace viewer at http://localhost:8795 with the Allow run open; (7) closing slide.
 - **Roles:**
   - **Narrator:** talks and points; never touches the keyboard.
   - **Driver:** clicks and types; never talks.
@@ -63,10 +63,10 @@
 - **If the naive run is slow:** open the saved naive session (backup) instead; it shows the same card and refusal.
 
 ### 4:20–4:40 · Proof it was the harness (H4, H5, S6): keep it to 20 s
-**Screen:** tab 3 (backup Allow session), then the Sessions view, then the gateway trace.
+**Screen:** tab 3 (backup Allow session), then tab 6 (trace viewer: the same run as a timeline).
 **Narrator:**
 > "Here's the same run from earlier where we pressed Allow. The server doesn't trust the agent either: it re-ran the SQL in a transaction and committed only because the real effects matched what was approved, row for row. If the agent had declared 13 users instead of 14, it would have rolled back."
-> "Everything you saw is in TrueForge's session log: tool calls, sandbox runs, tokens. The run cost ₹X through the TrueFoundry AI Gateway. It passed 10 out of 10 automated live runs today."
+> "Everything you saw is in TrueForge's session log: tool calls, sandbox runs, tokens. Each run costs about 35 cents in model calls. It passed 10 out of 10 automated live runs today."
 
 ### 4:40–4:55 · Close
 **Screen:** closing slide: the three-layer architecture + the policy table.

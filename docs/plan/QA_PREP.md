@@ -3,7 +3,7 @@
 Everyone should be able to answer these in ≤ 30 seconds. Owner in brackets fills in the specifics during the day.
 
 ## Harness (30%)
-- **What exactly is TrueForge doing vs your code?** TrueForge runs the agent loop, model calls through the gateway, MCP auth (GitHub OAuth, pgwarden header), the Daytona sandbox, the skill loading, Code Mode bridging, the approval pause and the session log. Our code: one MCP server (pgwarden), a skill (instructions + two plumbing helpers: Postgres boot/load and the effects diff), setup/reset/e2e scripts. [WS3]
+- **What exactly is TrueForge doing vs your code?** TrueForge runs the agent loop, model calls (Claude Sonnet 5 via TrueForge's Anthropic provider), MCP auth (GitHub OAuth, pgwarden header), the Daytona sandbox, the skill loading, Code Mode bridging, the approval pause and the session log. Our code: one MCP server (pgwarden), a skill (instructions + two plumbing helpers: Postgres boot/load and the effects diff), setup/reset/e2e scripts. [WS3]
 - **Is the rehearsal code pre-written?** No. The skill says what a rehearsal must check and the report format; the model writes `rehearse_v1.py`/`v2.py` and the fix SQL each run. Show a sandbox card. [WS3]
 - **Why Code Mode for export?** 25k rows would flood the context. The script pages `export_table` through the harness bridge, so the data stays in the sandbox and the sandbox never holds the DB credential. [WS3]
 
@@ -27,7 +27,7 @@ Everyone should be able to answer these in ≤ 30 seconds. Owner in brackets fil
 ## Scale / production questions
 - **Full-table copy at 100M rows?** No: use a Neon branch (copy-on-write) or sample + run the constraint-check aggregates on prod through a read-only tool. The server-side verification stays the same.
 - **Transactional apply locks tables.** Yes; fine at demo scale with lock/statement timeouts. Production: online migration tooling; the gate and the effects verification stay the same.
-- **Why the TrueFoundry gateway?** A budget cap per agent, rate limits, and a trace per run without changing agent code. [WS0: have the cost number ready]
+- **Why no AI Gateway?** Optional in the rules; we kept the model path simple and tested (10/10). TrueForge's provider config is swappable, so pointing it at the TrueFoundry AI Gateway for budgets and traces is a settings change, not a code change.
 
 
 ## Findings from live runs (26 Sep, use these in answers)

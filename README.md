@@ -35,29 +35,7 @@ Merging is blocked until the check is green.
 
 ## How it works
 
-```
- developer opens / updates a PR
-        │
-        ▼
- GitHub Actions (self-hosted runner next to TrueForge)          PR check: "Migration Rehearsal / prod data"
-   ci/rehearse-pr.mjs ── no migration changes? ── ✅ pass in seconds
-        │ migration changed
-        ▼
- TrueForge session  (agent: migration-rehearsal-<project>, Claude Sonnet 5)
-   ├─ GitHub MCP ─────────── read the PR and files, post the report
-   ├─ Daytona sandbox ────── agent's own Python: throwaway Postgres + masked prod copy
-   │     (0 credentials)       apply SQL · count violations · PREPARE app queries · diff effects
-   │                           v1 fails → write fix → v2 passes
-   └─ pgwarden MCP ───────── describe / profile / masked export / record_rehearsal
-                              apply_migration ──► ⏸ TrueForge approval card (human: Allow / Deny)
-                                      │ Allow
-                                      ▼
-                 pgwarden: policy · rehearsal hash · drift · lock · backup ·
-                 run in a transaction · protected tables · actual == approved ? COMMIT : ROLLBACK
-                                      │
-                                      ▼
-                 PR check ✅ "applied and verified"  (or ❌ denied / refused, prod unchanged)
-```
+![How it works: PR → GitHub Actions → TrueForge (agent, Daytona sandbox, GitHub MCP, pgwarden MCP) → approval card → pgwarden apply → PR check](docs/architecture.svg)
 
 | | Autonomous | Needs a human | Never, even with approval |
 |---|---|---|---|

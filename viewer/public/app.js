@@ -1,6 +1,13 @@
 // Migration Rehearsal trace viewer (read-only). Renders TrueForge sessions as Langfuse-style traces.
 import { mapEvents } from "./mapEvents.mjs";
 import { sessionRow, aggregate, repoPrFromText, OUTCOMES, DEFAULT_REPO, isRunAgent } from "./dashboard.mjs";
+import { reviewMigration } from "./review.mjs";
+
+// Protected tables per pgwarden MCP server, from the onboarded projects (empty when unavailable, e.g. fixture mode).
+let protectedByServer = {};
+fetch("/api/projects", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null))
+  .then((b) => { for (const p of b?.data || []) protectedByServer[p.pgwarden.mcp_name] = p.protected_tables || []; })
+  .catch(() => {});
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -787,7 +794,17 @@ function approvalHtml(n) {
     : `<div class="q"><span class="st ${n.decision === "allow" ? "ok" : "bad"}">${esc(n.decision === "allow" ? "allowed" : n.decision === "deny" ? "denied" : n.decision)}</span><span class="mut">decided in TrueForge at ${esc(ftime(n.end))} · after ${esc(fdur(n.end - n.start))}</span></div>${n.decisionReason ? `<div class="note">reason: ${esc(n.decisionReason)}</div>` : ""}`;
   const exec = state.mapped.observations.find((o) => o.id === `call:${n.meta.tool_call_id}`);
   const result = exec && exec.end != null ? `<div class="sec"><span class="l">result after decision</span><div class="callrow"><button class="pill" type="button" data-go="${esc(exec.id)}" style="cursor:pointer">${esc(exec.name)}</button><span class="${exec.status === "ok" ? "ok" : "bad"}">${esc(exec.errorCode || (exec.meta.denied ? "denied" : exec.output?.v?.status ?? exec.status))}</span></div></div>` : "";
+  const server = String(n.toolName || "").split(".")[0];
+  const rv = typeof a.sql === "string" ? reviewMigration({ sql: a.sql, effects: a.declared_effects, protectedTables: protectedByServer[server] || [] }) : null;
+  const review = rv ? `<div class="review ${rv.verdict}">
+      <div class="rv-head"><span class="st ${rv.verdict === "allow" ? "ok" : rv.verdict === "deny" ? "bad" : "warn"}">${rv.verdict === "allow" ? "recommend: allow" : rv.verdict === "deny" ? "recommend: deny" : "review carefully"}</span><b>${esc(rv.headline)}</b></div>
+      ${rv.reasons.length ? `<ul class="rv-reasons">${rv.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      <div class="rv-l">What this migration will do</div>
+      <ol class="rv-steps">${rv.statements.map((s) => `<li><span class="rv-risk ${s.risk}">${s.risk}</span>${esc(s.text)}</li>`).join("")}</ol>
+      <div class="note">Review assist: computed from the SQL, the declared effects and this project's protected tables${(protectedByServer[server] || []).length ? ` (${esc(protectedByServer[server].join(", "))})` : ""}. Not written by the agent.</div>
+    </div>` : "";
   return `<div class="gatebox${waiting ? "" : " done"}">${head}
+    ${review}
     ${a.declared_effects ? `<div class="sec"><span class="l">declared_effects (server-enforced)</span><pre class="box">${jsonHtml(a.declared_effects)}</pre></div>` : ""}
     ${a.evidence_summary ? `<div class="sec"><span class="l">evidence_summary</span><pre class="box">${esc(a.evidence_summary)}</pre></div>` : ""}
     ${typeof a.sql === "string" ? `<div class="sec"><span class="l">sql</span><pre class="box code"${/\bdrop\s+table\b|\btruncate\b/i.test(a.sql.replace(/--.*$/gm, "")) ? ' style="color:var(--bad)"' : ""}>${codeHtml(a.sql)}</pre></div>` : ""}

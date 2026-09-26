@@ -6,7 +6,9 @@
     "node": ">=22.14"
   },
   "scripts": {
-    "seed": "tsx seed/seed.ts"
+    "seed": "tsx seed/seed.ts",
+    "pgwarden": "npm --prefix pgwarden run start",
+    "postinstall": "npm --prefix pgwarden install --no-audit --no-fund"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { analyzeMigration } from "./analyze.js";
 import { applyMigration } from "./apply.js";
 import { recordRehearsal } from "./audit.js";
 import { exportTable, MAX_PAGE_SIZE, profileTable } from "./data.js";
@@ -139,6 +140,21 @@ export function buildServer(deps: Deps): McpServer {
         const data = await applyMigration(deps.pool, args);
         return { data, outcome: `committed:${data.applied_version}` };
       })(),
+  );
+
+  server.registerTool(
+    "analyze_migration",
+    {
+      title: "Analyze a migration's risk against prod",
+      description:
+        "Read-only. Static + data-aware risk report for a migration (Atlas/Squawk-style codes): e.g. MF101 unique index on " +
+        "duplicated data (counts duplicate groups on prod), MF103/MF104 NOT NULL on populated/NULL data, BC101/BC102 renames, " +
+        "DS101-103 drops, PG101 non-concurrent index, PG301/PG302/PG305/PG306 locking rewrites/scans, DML101 UPDATE/DELETE " +
+        "without WHERE, POLICY = what apply_migration would refuse. Never executes the SQL. Not a substitute for a rehearsal.",
+      inputSchema: { sql: z.string().min(1) },
+      annotations: { readOnlyHint: true },
+    },
+    (args) => run("analyze_migration", async () => ({ data: await withReadOnly(deps.pool, (c) => analyzeMigration(c, args.sql)) }))(),
   );
 
   server.registerTool(

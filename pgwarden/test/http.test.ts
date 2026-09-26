@@ -17,6 +17,7 @@ export const EXPECTED_ANNOTATIONS: Record<string, Record<string, boolean>> = {
   record_rehearsal: { readOnlyHint: false, destructiveHint: false },
   apply_migration: { readOnlyHint: false, destructiveHint: true },
   verify_prod_state: { readOnlyHint: true },
+  analyze_migration: { readOnlyHint: true },
 };
 
 describe("Streamable HTTP transport + bearer auth", () => {
@@ -43,7 +44,7 @@ describe("Streamable HTTP transport + bearer auth", () => {
     return client;
   };
 
-  test("SDK client lists exactly the 6 tools with the contract annotations and calls read tools", async () => {
+  test("SDK client lists exactly the 7 tools with the contract annotations and calls read tools", async () => {
     const client = await connect(TOKEN);
     try {
       const { tools } = await client.listTools();

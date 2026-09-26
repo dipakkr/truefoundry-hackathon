@@ -1,6 +1,6 @@
 // Migration Rehearsal trace viewer (read-only). Renders TrueForge sessions as Langfuse-style traces.
 import { mapEvents } from "./mapEvents.mjs";
-import { sessionRow, aggregate, repoPrFromText, OUTCOMES, DEFAULT_REPO, REHEARSAL_AGENT } from "./dashboard.mjs";
+import { sessionRow, aggregate, repoPrFromText, OUTCOMES, DEFAULT_REPO, isRunAgent } from "./dashboard.mjs";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -142,7 +142,7 @@ function loadRows() {
   return rowsInflight;
 }
 function failedRow(s, e) {
-  return { id: s.id, createdAt: Date.parse(s.created_at), prompt: s.title || "", agent: s.agent?.name ?? "inline", isRehearsal: s.agent?.name === REHEARSAL_AGENT, outcome: { key: "error", label: "load failed", cls: "err", full: String(e.message || e) }, latencyMs: s.metrics?.total_duration_ms ?? null, ttaMs: null, pending: 0, tokens: 0, toolCalls: null, sandboxRuns: null, approvals: [], ...repoPrFromText(s.title) };
+  return { id: s.id, createdAt: Date.parse(s.created_at), prompt: s.title || "", agent: s.agent?.name ?? "inline", isRehearsal: isRunAgent(s.agent?.name), outcome: { key: "error", label: "load failed", cls: "err", full: String(e.message || e) }, latencyMs: s.metrics?.total_duration_ms ?? null, ttaMs: null, pending: 0, tokens: 0, toolCalls: null, sandboxRuns: null, approvals: [], ...repoPrFromText(s.title) };
 }
 
 function updateShellFromRows(rows) {
@@ -212,10 +212,10 @@ function bindRowNav(tbody) {
 
 /* ---------------- dashboard ---------------- */
 const KPI_DEFS = [
-  { k: "runs", label: "Rehearsals run", href: "#/rehearsals", sub: () => "agent migration-rehearsal" },
-  { k: "applied", label: "Applied", sw: "applied", href: "#/rehearsals?status=applied", sub: () => "committed to prod" },
-  { k: "denied", label: "Denied", sw: "denied", href: "#/rehearsals?status=denied", sub: () => "by a human" },
-  { k: "refused", label: "Refused by server", sw: "refused", href: "#/rehearsals?status=refused", sub: () => "by pgwarden" },
+  { k: "runs", label: "Runs", href: "#/runs", sub: () => "migration-rehearsal agents" },
+  { k: "applied", label: "Applied", sw: "applied", href: "#/runs?status=applied", sub: () => "committed to prod" },
+  { k: "denied", label: "Denied", sw: "denied", href: "#/runs?status=denied", sub: () => "by a human" },
+  { k: "refused", label: "Refused by server", sw: "refused", href: "#/runs?status=refused", sub: () => "by pgwarden" },
   { k: "pendingApprovals", label: "Pending approval", sw: "waiting", href: "#/approvals?d=pending", sub: () => "waiting on a human" },
   { k: "medianTtaMs", label: "Median time to approval card", fmt: (v) => fdurOr(v), sub: (k) => `agent working time · ${k.ttaN} run${k.ttaN === 1 ? "" : "s"}`, href: "#/approvals" },
   { k: "tokens", label: "Total tokens", fmt: ftok, sub: () => "rehearsal runs" },
@@ -312,7 +312,7 @@ function hoursChart(agg, W) {
     if (i % labelEvery === 0 || i === hours.length - 1) g += `<text x="${cx}" y="${H - 8}" text-anchor="middle">${svgEsc(hourLabel(hr.t))}</text>`;
   });
   g += `<line class="axis" x1="${ml}" x2="${ml + iw}" y1="${y(0)}" y2="${y(0)}"/>`;
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Rehearsal runs by outcome per hour">${g}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Runs by outcome per hour">${g}</svg>`;
 }
 const hourLabel = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -359,18 +359,18 @@ function ttaChart(agg, W) {
 const listUi = { q: "", status: "all" };
 async function renderTraceList(kind) {
   const tok = routeSeq;
-  const rehearsals = kind === "rehearsals";
+  const rehearsals = kind === "runs";
   setActiveNav(kind);
-  document.title = `${rehearsals ? "Rehearsals" : "Traces"} · Migration Rehearsal`;
+  document.title = `${rehearsals ? "Runs" : "Traces"} · Migration Rehearsal`;
   const qs = new URLSearchParams(location.hash.split("?")[1] || "");
   listUi.status = qs.get("status") || "all";
-  $("app").innerHTML = pageHead("Tracing", rehearsals ? "Rehearsals" : "Traces") + `
+  $("app").innerHTML = pageHead("Tracing", rehearsals ? "Runs" : "Traces") + `
     <div class="toolbar">
       <label class="search"><svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input id="q" type="search" placeholder="Search name or id" value="${esc(listUi.q)}" aria-label="Search traces"></label>
       <div class="fchips" id="fchips" role="group" aria-label="Filter by status"></div>
     </div>
     <div class="tbl"><table class="dtable">${traceHeadHtml()}<tbody id="rows">${skeletonRows(TRACE_COLS, 8)}</tbody></table></div>
-    <div class="tfoot"><span id="countNote"></span><span>${rehearsals ? `agent <span class="mono">${REHEARSAL_AGENT}</span> only` : "all agents"}</span></div>
+    <div class="tfoot"><span id="countNote"></span><span>${rehearsals ? `<span class="mono">migration-rehearsal</span> agents only` : "all agents"}</span></div>
     <div id="listMsg"></div>`;
   $("refreshBtn").addEventListener("click", () => load(false));
   bindRowNav($("rows"));
@@ -384,7 +384,7 @@ async function renderTraceList(kind) {
     $("fchips").innerHTML = `<button type="button" class="fchip" data-s="all" aria-pressed="${listUi.status === "all"}">All <span class="n">${base.length}</span></button>` +
       OUTCOMES.filter((o) => counts[o.key] || listUi.status === o.key || ["applied", "denied", "refused", "waiting"].includes(o.key)).map((o) => `<button type="button" class="fchip" data-s="${o.key}" aria-pressed="${listUi.status === o.key}"><span class="sw ${o.key}"></span>${esc(o.label)} <span class="n">${counts[o.key] || 0}</span></button>`).join("");
     $("rows").innerHTML = vis.length ? vis.map(traceRowHtml).join("") : `<tr class="nodata-row"><td colspan="${TRACE_COLS}" class="nodata">${rowsAll.length ? "No traces match the filter." : "No sessions yet."}</td></tr>`;
-    $("countNote").textContent = `${vis.length} of ${rowsAll.length} ${rehearsals ? "rehearsals" : "traces"}`;
+    $("countNote").textContent = `${vis.length} of ${rowsAll.length} ${rehearsals ? "runs" : "traces"}`;
   };
   $("q").addEventListener("input", (e) => { listUi.q = e.target.value; draw(); });
   $("fchips").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (!b) return; listUi.status = b.dataset.s; draw(); });
@@ -594,7 +594,7 @@ function renderHeader() {
   } else $("alert").innerHTML = "";
 
   const reps = s.reports;
-  $("rehearsals").innerHTML = reps.length ? `<span class="lbl mut" style="font-size:11.5px">rehearsals</span>` + reps.map((r) => {
+  $("rehearsals").innerHTML = reps.length ? `<span class="lbl mut" style="font-size:11.5px">attempts</span>` + reps.map((r) => {
     const node = state.mapped.observations.find((o) => o.report === r.report);
     const ok = r.report.verdict === "pass";
     return `<button type="button" class="chip" data-go="${esc(node?.id ?? "")}"><i>attempt ${esc(r.report.attempt ?? "?")}</i> <span class="${ok ? "ok" : "bad"}">${esc(r.report.verdict)}</span>${r.report.effects?.row_deltas ? ` <i>·</i> ${esc(Object.entries(r.report.effects.row_deltas).map(([k, v]) => `${k} ${v > 0 ? "+" : ""}${v}`).join(", "))}` : ""}</button>`;
@@ -648,10 +648,10 @@ function reportHtml(r) {
   for (const i of r.invariants || []) rows.push(["invariant", i.name + (i.detail != null ? ` (${i.detail})` : ""), "–", i.ok, null]);
   for (const c of r.constraint_violations || []) rows.push(["violation", `${c.constraint}: ${c.violating_groups} groups`, "–", false, (c.examples_masked || []).join("\n")]);
   const eff = r.effects;
-  return `<div class="sec"><span class="l">RehearsalReport · attempt ${esc(r.attempt ?? "?")} · verdict <span class="${ok ? "ok" : "bad"}">${esc(r.verdict)}</span>${r.duration_ms != null ? " · " + esc(fdur(r.duration_ms)) : ""}${r.source_rows ? " · source rows " + esc(Object.entries(r.source_rows).map(([k, v]) => `${k} ${Number(v).toLocaleString()}`).join(", ")) : ""}</span>
+  return `<div class="sec"><span class="l">Run report · attempt ${esc(r.attempt ?? "?")} · verdict <span class="${ok ? "ok" : "bad"}">${esc(r.verdict)}</span>${r.duration_ms != null ? " · " + esc(fdur(r.duration_ms)) : ""}${r.source_rows ? " · source rows " + esc(Object.entries(r.source_rows).map(([k, v]) => `${k} ${Number(v).toLocaleString()}`).join(", ")) : ""}</span>
     <div class="tbl"><table><thead><tr><th>check</th><th>target</th><th class="r">time</th><th>result</th></tr></thead><tbody>${rows.map(([a, b, c, okk, err]) => `<tr><td>${esc(a)}</td><td class="m">${esc(b)}${err ? `<div class="bad" style="white-space:pre-wrap">${esc(err)}</div>` : ""}</td><td class="r">${esc(c)}</td><td class="${okk ? "ok" : "bad"}">${okk ? "pass" : "fail"}</td></tr>`).join("")}</tbody></table></div></div>
     ${eff ? `<div class="sec"><span class="l">effects (row_deltas + schema_changes)</span><div class="tbl"><table><tbody>${Object.entries(eff.row_deltas || {}).map(([k, v]) => `<tr><td class="m">${esc(k)}</td><td class="r">${v > 0 ? "+" : ""}${esc(v)}</td></tr>`).join("")}${(eff.schema_changes || []).map((c) => `<tr><td class="m" colspan="2">${esc(c)}</td></tr>`).join("")}</tbody></table></div></div>` : ""}
-    <details><summary>raw RehearsalReport JSON</summary><pre class="box">${jsonHtml(r)}</pre></details>`;
+    <details><summary>raw report JSON</summary><pre class="box">${jsonHtml(r)}</pre></details>`;
 }
 
 function argsHtml(v) {
@@ -816,7 +816,7 @@ async function route() {
   if (FIXTURE && !location.hash) { const f = await loadFixture(); location.replace("#/s/" + f.session.id); return; }
   const path = h.slice(1).split("?")[0];
   if (path === "/traces") return renderTraceList("traces");
-  if (path === "/rehearsals") return renderTraceList("rehearsals");
+  if (path === "/runs" || path === "/rehearsals") return renderTraceList("runs");
   if (path === "/approvals") return renderApprovals();
   return renderDashboard();
 }

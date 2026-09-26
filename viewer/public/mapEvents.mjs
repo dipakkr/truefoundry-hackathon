@@ -120,6 +120,8 @@ export function parseToolResult(content, kind) {
     out.ok = false;
     let e = v.error;
     if (Array.isArray(e)) { const txt = e.map((p) => p?.text ?? "").join("\n"); e = parseJson(txt) ?? txt; }
+    // TrueForge wraps a denial as {"error":"User denied tool call: <reason>"} inside the error text.
+    if (e && typeof e === "object" && !Array.isArray(e) && typeof e.error === "string" && Object.keys(e).length === 1) e = e.error;
     if (typeof e === "string" && e.startsWith("User denied tool call")) out.denied = true;
     out.error = e;
     out.value = e;
@@ -187,6 +189,7 @@ export function mapEvents(input) {
     a.decision = approval?.status || "unknown";
     a.decisionReason = approval?.reason ?? null;
     a.end = t; a.status = a.decision === "allow" ? "ok" : "bad";
+    if (a.decision !== "allow") a.meta = { ...(a.meta || {}), denied: true };
     a.output = { decision: a.decision, ...(a.decisionReason ? { reason: a.decisionReason } : {}), decided_at: t ? new Date(t).toISOString() : null, via: how, decided_in_turn: turnId };
     const c = calls.get(toolCallId);
     if (c) { c.decisionAt = t; if (c.obs.end == null) c.obs.status = "run"; }

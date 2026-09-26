@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Client } from "./db.js";
 import { qi } from "./db.js";
-import { listPublicTables, snapshotFacts } from "./effects.js";
+import { type Facts, listPublicTables, snapshotFacts } from "./effects.js";
 
 export interface ColumnInfo { name: string; type: string; nullable: boolean; default: string | null }
 export interface IndexInfo { name: string; definition: string; unique: boolean }
@@ -146,11 +146,11 @@ function fkOrder(tables: TableInfo[]): TableInfo[] {
   return out;
 }
 
-/** verify_prod_state */
-export async function verifyProdState(c: Client) {
-  const facts = await snapshotFacts(c);
-  const row_counts = Object.fromEntries(Object.entries(facts.tables).map(([t, f]) => [t, f.row_count]));
-  // Fingerprint = schema facts only (no row counts), canonical key order.
+/**
+ * Schema fingerprint = sha256 over schema facts only (no row counts), canonical key order.
+ * Used by verify_prod_state, record_rehearsal (stored) and apply_migration (drift check).
+ */
+export function fingerprintOf(facts: Facts): string {
   const schemaOnly = Object.fromEntries(
     Object.keys(facts.tables).sort().map((t) => {
       const f = facts.tables[t];
@@ -158,7 +158,19 @@ export async function verifyProdState(c: Client) {
       return [t, { columns, indexes: [...f.indexes].sort(), constraints: [...f.constraints].sort() }];
     }),
   );
-  const schema_fingerprint = createHash("sha256").update(JSON.stringify(schemaOnly)).digest("hex");
+  return createHash("sha256").update(JSON.stringify(schemaOnly)).digest("hex");
+}
+
+/** Prod's current schema fingerprint (catalog only, no row counts). */
+export async function schemaFingerprint(c: Client): Promise<string> {
+  return fingerprintOf(await snapshotFacts(c, { rowCounts: false }));
+}
+
+/** verify_prod_state */
+export async function verifyProdState(c: Client) {
+  const facts = await snapshotFacts(c);
+  const row_counts = Object.fromEntries(Object.entries(facts.tables).map(([t, f]) => [t, f.row_count]));
+  const schema_fingerprint = fingerprintOf(facts);
   const users = facts.tables.users;
   let last_applied_version: string | null = null;
   if ((await listPublicTables(c)).includes("schema_migrations")) {

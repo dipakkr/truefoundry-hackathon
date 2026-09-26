@@ -13,10 +13,10 @@ export function ensureParser(): Promise<void> {
   return (loaded ??= loadModule());
 }
 
-type Node = Record<string, any>;
+export type Node = Record<string, any>;
 
 /** Depth-first walk over every AST node, yielding [nodeType, body] pairs (e.g. ["DeleteStmt", {...}]). */
-function* walk(v: unknown): Generator<[string, Node]> {
+export function* walk(v: unknown): Generator<[string, Node]> {
   if (Array.isArray(v)) {
     for (const x of v) yield* walk(x);
   } else if (v && typeof v === "object") {
@@ -46,8 +46,14 @@ export async function checkPolicy(sql: string): Promise<PolicyResult> {
   const v: string[] = [];
   if (stmts.length === 0) v.push("no SQL statements");
   if (stmts.length > MAX_STATEMENTS) v.push(`${stmts.length} statements (max ${MAX_STATEMENTS})`);
+  v.push(...policyViolations(stmts));
+  return { ok: v.length === 0, statements: stmts.length, violations: [...new Set(v)] };
+}
 
-  for (const [type, n] of walk(stmts)) {
+/** The per-node policy rules, over any AST subtree (a whole script or one statement). */
+export function policyViolations(tree: unknown): string[] {
+  const v: string[] = [];
+  for (const [type, n] of walk(tree)) {
     switch (type) {
       case "DropStmt":
         if (n.removeType === "OBJECT_TABLE") v.push("DROP TABLE");
@@ -91,5 +97,5 @@ export async function checkPolicy(sql: string): Promise<PolicyResult> {
         break;
     }
   }
-  return { ok: v.length === 0, statements: stmts.length, violations: [...new Set(v)] };
+  return v;
 }

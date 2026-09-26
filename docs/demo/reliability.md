@@ -3,6 +3,16 @@
 Real agent (Claude Sonnet 5 via TrueForge), real Daytona sandbox, real Postgres, real GitHub PR, real approval events,
 driven by `npm run e2e` through the TrueForge SDK. Each run starts from `npm run reset`.
 
+## Batch 3 · 26 Sep 2026 · final frozen version (sandbox-proof step added): 3/3 pass
+
+| # | Decision | Result | Time to approval card | Outcome |
+|---|---|---|---|---|
+| 1 | allow | PASS | 163 s | committed, effects verified |
+| 2 | deny | PASS | 173 s | prod unchanged |
+| 3 | allow | PASS | 137 s | committed, effects verified |
+
+**Median 163 s** to the approval card. The skill is now pinned to this commit (`SKILL_REF`), so later pushes don't change the live agent.
+
 ## Batch 2 · 26 Sep 2026 · after fixes: 10/10 pass
 
 | # | Decision | Result | Time to approval card | End | Outcome |

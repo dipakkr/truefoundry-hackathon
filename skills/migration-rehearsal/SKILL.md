@@ -30,9 +30,10 @@ Don't explore: every path, tool and data shape you need is below. Don't call `ge
 
 **Step 1 (one parallel batch):**
 - `exec` (**sandbox proof**, people watch this): run
-  `echo "SANDBOX host=$(hostname) user=$(whoami) cpus=$(nproc) kernel=$(uname -r)"; echo "credentials in sandbox env: $(env | grep -ciE 'key|token|secret|passw|database_url|pgwarden')"; ls /opt/tf/skills`
+  `echo "SANDBOX host=$(hostname) user=$(whoami) cpus=$(nproc) kernel=$(uname -r)"; echo "credential-like env var names: $(env | cut -d= -f1 | grep -ciE 'key|token|secret|passw|database_url')"; for v in DATABASE_URL PGWARDEN_TOKEN GITHUB_TOKEN ANTHROPIC_API_KEY OPENAI_API_KEY DAYTONA_API_KEY; do [ -n "$(printenv $v)" ] && echo "PRESENT $v"; done; echo "checked: DATABASE_URL PGWARDEN_TOKEN GITHUB_TOKEN ANTHROPIC_API_KEY OPENAI_API_KEY DAYTONA_API_KEY"`
   and post one status line: "Sandbox up (Daytona `<host>`): 0 credentials inside, so the code I write can only touch a
-  throwaway masked copy." If the count is not 0, say so plainly and stop.
+  throwaway masked copy." Only stop if the count is not 0 or a `PRESENT` line appears. (`TFY_*` variables are TrueForge's
+  own sandbox plumbing: server names and the Code Mode bridge address, not credentials.)
 - `exec`: start Postgres in the background so it's warm later:
   `mkdir -p /tmp/dr && cd /tmp/dr && pip install -q "psycopg[binary]" sqlparse && (nohup python3 -c "import sys; sys.path.insert(0,'/opt/tf/skills/migration-rehearsal/scripts'); from pg_boot import boot; boot('warm')" > /tmp/dr/pgboot.log 2>&1 &)`
 - `github.pull_request_read` with `method: "get"` and with `method: "get_files"` (`owner`, `repo`, `pullNumber`).

@@ -10,10 +10,22 @@ Every team tests database migrations in CI or on a **UAT database**, but those d
 Every PR runs a GitHub workflow that starts a TrueForge session. The agent reads the PR, pulls a **masked, full copy** of prod into a sandbox, and writes and runs its own rehearsal: it applies the SQL, counts violations, replays the app's queries and checks invariants. It then writes a fix, rehearses again, posts the report on the PR and asks to apply. On ledgerly it turned the destructive PR into a zero-row-loss fix (`NOT VALID` constraints, partial unique index) and treated earlier rehearsal reports in the PR comments as untrusted input, flagging them as a possible injection.
 
 ## Ledgerly: three states of prod
-| 1 · Before: healthy (schema 0006) | 2 · Deployed the usual way: broken | 3 · Through Migration Rehearsal: safe (0007) |
-|---|---|---|
-| ![healthy](docs/images/ledgerly-1-healthy.png) | ![broken](docs/images/ledgerly-2-broken.png) | ![safe](docs/images/ledgerly-3-safe.png) |
-| 427 refunds, 18 double charges, 37 + 64 legacy rows | 11 refunds (₹19,554.50) and 18 payments gone; half-migrated at 0006 | New rules live, every payment and refund intact |
+1 · Before: healthy (schema 0006) 
+
+ 
+ 
+ ![healthy](docs/images/ledgerly-1-healthy.png) 
+
+ 2 · Deployed the usual way: broken 
+
+
+  ![broken](docs/images/ledgerly-2-broken.png) 
+ 
+  3 · Through Migration Rehearsal: safe (0007) 
+
+![safe](docs/images/ledgerly-3-safe.png) 
+
+ 427 refunds, 18 double charges, 37 + 64 legacy rows | 11 refunds (₹19,554.50) and 18 payments gone; half-migrated at 0006 | New rules live, every payment and refund intact |
 
 ## Where it stops
 Applying to prod. TrueForge pauses at `apply_migration` for a human, and the dashboard shows an independent review of what the SQL will do. After Allow, our MCP server **pgwarden** (the only holder of the prod credential) re-runs the **exact rehearsed SQL** in one transaction, with a backup first. It commits only if the real effects equal the approved ones. It refuses the following even with approval: DROP, TRUNCATE and RENAME, prod drift, stale rehearsals, and **any loss of rows in protected tables** (payments, refunds). The PR can't merge until the check is green.
@@ -58,6 +70,8 @@ TrueForge's own approval card, pausing the run until a human decides:
 | PII leaving prod (5 columns masked); 0 credentials in the sandbox | Two applies at once: `APPLY_IN_PROGRESS`; backup before every apply |
 
 ## Known limits
-- **Fix quality varies between runs.** The approval card, the independent review and protected tables make an unsafe fix visible or refuse it outright. Next: score fixes before asking a human.
-- **Effects measure rows and schema, not changed values.** Next: per-column checksums on protected tables.
-- **Full-table copies suit small and medium databases.** Next: copy-on-write branches (e.g. Neon) for large ones.
+- The agent's fixes vary between runs. Before protected tables existed, two destructive fixes were approved in testing.
+- Effects count rows and schema, not changed values.
+- Full-table copies suit demo scale only.
+- One runner per repo, so jobs queue.
+- An applied fix isn't yet written back to the PR's migration file.

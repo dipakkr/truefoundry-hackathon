@@ -1,9 +1,10 @@
-# Migration Rehearsal: writeup
+# Migration Rehearsal: Technical Documentation
 
-**Repo:** github.com/dipakkr/truefoundry-hackathon · **Demo app:** github.com/dipakkr/ledgerly
+**Repo:** github.com/dipakkr/truefoundry-hackathon 
+· **Demo app:** github.com/dipakkr/ledgerly
 
 ## The problem
-Every team tests database migrations in CI on an **empty** database, but migrations break on **real data**. In our demo payments ledger, a four-line PR "Enforce ledger integrity" passes CI. Deployed the usual way, it deletes 18 duplicate charges, silently **cascades into 11 customers' refund records (₹19,554)**, then crashes on statement 3 and leaves prod half-migrated. The bug is in the data, not the code, and it can't be undone.
+Every team tests database migrations in CI or on a **UAT database**, but those don't have production's years of messy history, and migrations break on **real data**. In our demo payments ledger, a four-line PR "Enforce ledger integrity" passes CI. Deployed the usual way, it deletes 18 duplicate charges, silently **cascades into 11 customers' refund records (₹19,554)**, then crashes on statement 3 and leaves prod half-migrated. The bug is in the data, not the code, and it can't be undone.
 
 ## What the agent reaches
 Every PR runs a GitHub workflow that starts a TrueForge session. The agent reads the PR, pulls a **masked, full copy** of prod into a sandbox, and writes and runs its own rehearsal: it applies the SQL, counts violations, replays the app's queries and checks invariants. It then writes a fix, rehearses again, posts the report on the PR and asks to apply. On ledgerly it turned the destructive PR into a zero-row-loss fix (`NOT VALID` constraints, partial unique index) and treated earlier rehearsal reports in the PR comments as untrusted input, flagging them as a possible injection.

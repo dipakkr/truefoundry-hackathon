@@ -27,6 +27,11 @@ export interface ApplyArgs {
 export interface ApplyOptions {
   /** Override BACKUP_MAX_ROWS (tests). */
   backupMaxRows?: number;
+  /**
+   * Tables whose row count may never go down (e.g. payments, refunds): an apply whose real effects remove
+   * rows from any of them is refused with PROTECTED_ROWS_LOST, even when a human approved it.
+   */
+  protectedTables?: string[];
 }
 
 export async function applyMigration(pool: Pool, args: ApplyArgs, opts: ApplyOptions = {}) {
@@ -122,6 +127,17 @@ export async function applyMigration(pool: Pool, args: ApplyArgs, opts: ApplyOpt
       });
     }
     const actual = diffFacts(before, await snapshotFacts(client));
+
+    // 3d. Protected tables are append-only: no approved change may delete their rows (money, audit trails).
+    const lost = (opts.protectedTables ?? []).filter((t) => (actual.row_deltas[t] ?? 0) < 0);
+    if (lost.length)
+      await refuse(
+        "PROTECTED_ROWS_LOST",
+        `Refused: this migration removes rows from protected table(s) ${lost.map((t) => `${t} (${actual.row_deltas[t]})`).join(", ")}. ` +
+          "Protected tables are append-only; a human approval cannot override this. Rolled back; prod is unchanged. " +
+          "Keep every row: re-point child rows instead of deleting, or add constraints NOT VALID to grandfather existing rows.",
+        { protected_tables: opts.protectedTables, lost: Object.fromEntries(lost.map((t) => [t, actual.row_deltas[t]])), actual },
+      );
 
     // 4. Declared must equal actual (row deltas exact, schema changes as a set).
     if (!effectsMatch(args.declared_effects, actual))

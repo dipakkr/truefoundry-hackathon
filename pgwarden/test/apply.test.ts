@@ -187,3 +187,35 @@ describe("apply_migration refusal table (WS1 T6) through the MCP tool", () => {
     assert.ok(logs.every((l) => !/DROP|UPDATE|lower\(/.test(l)));
   });
 });
+
+describe("protected tables are append-only, even with approval", () => {
+  let pool: Pool;
+  let client: Client;
+  const DB2 = "pgwarden_test_protect";
+  async function call(name: string, args: Record<string, unknown>) {
+    const r: any = await client.callTool({ name, arguments: args });
+    return { isError: !!r.isError, body: JSON.parse(r.content[0].text) };
+  }
+  before(async () => {
+    pool = createPool(await freshDb(DB2));
+    await seedMiniProd(pool);
+    const server = buildServer({ pool, masker: createMasker("k"), log: () => {}, protectedTables: ["users"] });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    client = new Client({ name: "t", version: "1" });
+    await client.connect(b);
+  });
+  after(async () => {
+    await client.close();
+    await pool.end();
+    await dropDb(DB2);
+  });
+  test("a fix that deletes users rows -> PROTECTED_ROWS_LOST, rolled back, prod unchanged", async () => {
+    const before = (await call("verify_prod_state", {})).body;
+    const rid = (await call("record_rehearsal", { sql: CORRECT_FIX, verdict: "pass", report: REPORT })).body.rehearsal_id;
+    const r = await call("apply_migration", { sql: CORRECT_FIX, rehearsal_id: rid, declared_effects: GOOD_EFFECTS, evidence_summary: "declared honestly" });
+    assert.equal(r.body.code, "PROTECTED_ROWS_LOST");
+    assert.deepEqual(r.body.detail.lost, { users: -DUPES });
+    assert.deepEqual((await call("verify_prod_state", {})).body, before);
+  });
+});

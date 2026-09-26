@@ -130,11 +130,11 @@ while (Date.now() < DEADLINE) {
   if (newest.state?.status === 'error') { await status('error', `Agent run failed: ${newest.state.message || 'error'}`, link); done(1); }
 
   // Finished: decide from apply_migration's response (newest first).
-  const applyResp = events.find((e) => e.type === 'tool.response' && /committed|POLICY_REFUSED|EFFECTS_MISMATCH|REHEARSAL_|User denied/.test(text(e)));
+  const applyResp = events.find((e) => e.type === 'tool.response' && /committed|POLICY_REFUSED|EFFECTS_MISMATCH|PROTECTED_ROWS_LOST|DRIFT_DETECTED|REHEARSAL_|User denied/.test(text(e)));
   const body = applyResp ? text(applyResp) : '';
   if (/"status":"committed"/.test(body)) { await status('success', 'Rehearsed, approved, applied and verified on prod', link); done(0); }
   if (/User denied/.test(body)) { await status('failure', 'Approval denied in TrueForge. Prod unchanged', link); done(1); }
-  const code = (body.match(/POLICY_REFUSED|EFFECTS_MISMATCH|REHEARSAL_[A-Z_]+/) || [])[0];
+  const code = (body.match(/POLICY_REFUSED|EFFECTS_MISMATCH|PROTECTED_ROWS_LOST|DRIFT_DETECTED|REHEARSAL_[A-Z_]+/) || [])[0];
   if (code) { await status('failure', `pgwarden refused (${code}). Prod unchanged`, link); done(1); }
   await status('failure', 'Not applied: rehearsal did not pass or the agent stopped. See the PR comment', link);
   done(1);

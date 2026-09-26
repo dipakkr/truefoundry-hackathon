@@ -150,7 +150,13 @@ if (server !== 'pgwarden') m.instructions = m.instructions.replace(/\bpgwarden\b
 m.instructions =
   `Project: ${project.repo}. Prod database is behind the MCP server \`${server}\`: call every pgwarden tool through it ` +
   `and pass server="${server}" to sources.export_tables. Migrations live in \`${project.migrations_path}/\`, app queries in ` +
-  `\`${project.queries_path}/\` (use that path wherever the skill says src/queries).\n\n${m.instructions}`;
+  `\`${project.queries_path}/\` (use that path wherever the skill says src/queries).` +
+  (project.protected_tables?.length
+    ? ` Protected tables (append-only): ${project.protected_tables.join(', ')}. ${server}.apply_migration refuses any change that ` +
+      `removes rows from them (PROTECTED_ROWS_LOST), even with approval, so your fix must keep every row there: re-point ` +
+      `child rows instead of deleting parents, and add new constraints NOT VALID to grandfather existing rows.`
+    : '') +
+  `\n\n${m.instructions}`;
 const prior = agents.ok ? agents.body.find((a) => a.name === project.agent) : undefined;
 const description = `Migration Rehearsal for ${project.repo}: rehearses migration PRs on a masked copy of prod, applies only through the human-gated ${server}.apply_migration.`;
 const r = prior

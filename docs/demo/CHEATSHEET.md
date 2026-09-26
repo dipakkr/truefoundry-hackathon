@@ -39,4 +39,4 @@ Agent calls `apply_migration` → TrueForge sees it's in `require_approval_for_t
 - **"Why not the AI Gateway?"** Optional in the rules; we kept the model path simple and tested. It's a TrueForge setting, not a code change.
 
 ## Numbers to remember
-10/10 live runs · about 3 min to the approval card · about $0.35 per run · 25,014 rows rehearsed · 14 duplicates and 2 broken queries found · 25 orders re-pointed · 6/6 guardrail attacks refused · 1 gated tool.
+13/13 live runs (3/3 on the final version) · about 2:45 to the approval card · about $0.35 per run · 25,014 rows rehearsed · 14 duplicates and 2 broken queries found · 25 orders re-pointed · 6/6 guardrail attacks refused · 1 gated tool.

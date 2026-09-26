@@ -13,6 +13,7 @@
     "demo": "tsx scripts/demo.ts",
     "setup": "tsx scripts/setup.ts",
     "doctor": "tsx scripts/doctor.ts",
+    "demo-pr": "tsx scripts/demo-pr.ts",
     "postinstall": "npm --prefix pgwarden install --no-audit --no-fund"
   },
   "devDependencies": {

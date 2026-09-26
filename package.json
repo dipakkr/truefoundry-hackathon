@@ -10,6 +10,7 @@
     "reset": "tsx scripts/reset.ts",
     "pgwarden": "npm --prefix pgwarden run start",
     "trueforge": "tsx scripts/trueforge.ts",
+    "demo": "tsx scripts/demo.ts",
     "setup": "tsx scripts/setup.ts",
     "doctor": "tsx scripts/doctor.ts",
     "postinstall": "npm --prefix pgwarden install --no-audit --no-fund"

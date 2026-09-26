@@ -6,7 +6,7 @@ Built on [TrueForge](https://github.com/truefoundry/trueforge) for the TrueFound
 
 > CI passed on an empty database. Prod disagreed.
 
-A two-line migration adds a unique index on `lower(email)` and renames `phone` to `mobile`. CI is green and review says LGTM. On prod it fails, because 14 customers signed up twice with different capitalization, and two app queries still read `phone`. Existing migration tools (Atlas, Squawk, Bytebase, PlanetScale) check the SQL text. None of them run it against your real data. Migration Rehearsal does.
+A two-line migration adds a unique index on `lower(email)` and renames `phone` to `mobile`. CI is green and review says LGTM. On prod it fails, because 14 customers signed up twice with different capitalization, and two app queries still read `phone`. The review tools we compared (Atlas, Squawk, Bytebase) lint the SQL text; none of them rehearse it on your data and write the fix. Migration Rehearsal does.
 
 ![The agent stops before the one irreversible step: TrueForge's approval card for apply_migration](docs/demo/approval-card.png)
 
@@ -24,7 +24,9 @@ A two-line migration adds a unique index on `lower(email)` and renames `phone` t
 |---|---|---|
 | Reads, sandbox work, rehearsal record, PR comment | `apply_migration` | DROP TABLE, TRUNCATE, DROP/RENAME COLUMN, GRANT/REVOKE, DELETE without WHERE, merge/push |
 
-Details and threat model: [SAFETY.md](SAFETY.md).
+Details and threat model: [SAFETY.md](SAFETY.md). Every edge case we handle, mapped to Atlas/Squawk/Bytebase categories with evidence: [docs/EDGE_CASES.md](docs/EDGE_CASES.md).
+
+**Try to break it yourself:** `npm run guardrails` attacks pgwarden live (drop a table, sneak in a rename, fake or failed rehearsal, SQL changed after testing, understated effects) and proves prod's schema fingerprint is unchanged afterwards.
 
 ![Architecture](docs/architecture.svg)
 

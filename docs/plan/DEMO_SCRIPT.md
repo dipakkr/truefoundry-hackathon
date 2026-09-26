@@ -27,7 +27,7 @@
 **Screen:** PR #1 on GitHub: a two-line diff, green CI.
 **Narrator:**
 > "Quick show of hands: who has had a database migration pass CI and then fail in production? … This PR is green. Two lines: a unique index on email, and a column rename. Code review said LGTM. Would you merge it?"
-> "Every migration tool today, Atlas, Squawk, Bytebase, reads the SQL text. None of them run it on your real data. That's the job we handed to an agent: Migration Rehearsal, running on TrueForge. Its job is to prove a migration is safe on real data before it's allowed near prod."
+> "The review tools teams use, Atlas, Squawk, Bytebase, lint the SQL text. None of them rehearse it on your data and write the fix. That's the job we handed to an agent: Migration Rehearsal, running on TrueForge. Its job is to prove a migration is safe on real data before it's allowed near prod."
 
 ### 0:40–1:10 · Harness moment 1: reaching real systems (H1)
 **Screen:** tool cards stream in: GitHub, then `pgwarden.describe_schema` and `profile_table`. The **Security finding** appears.

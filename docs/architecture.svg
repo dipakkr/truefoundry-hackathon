@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="13">
+  <rect width="960" height="560" fill="#ffffff"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#52525b"/></marker>
+  </defs>
+
+  <!-- Human -->
+  <rect x="24" y="40" width="150" height="70" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="1.5"/>
+  <text x="99" y="68" text-anchor="middle" font-weight="600" fill="#18181b">Engineer / judge</text>
+  <text x="99" y="88" text-anchor="middle" fill="#9a3412">Allow / Deny</text>
+
+  <!-- TrueForge box -->
+  <rect x="220" y="20" width="440" height="250" rx="12" fill="#f4f4f5" stroke="#a1a1aa" stroke-width="1.5"/>
+  <text x="236" y="44" font-weight="600" fill="#18181b">TrueForge (harness, local :8790)</text>
+  <rect x="240" y="60" width="180" height="56" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="330" y="84" text-anchor="middle" font-weight="600" fill="#18181b">Chat UI + approvals</text>
+  <text x="330" y="102" text-anchor="middle" fill="#71717a" font-size="12">human gate (layer 2)</text>
+  <rect x="440" y="60" width="200" height="56" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="540" y="84" text-anchor="middle" font-weight="600" fill="#18181b">Agent loop + skill</text>
+  <text x="540" y="102" text-anchor="middle" fill="#71717a" font-size="12">model via TrueFoundry AI Gateway</text>
+  <rect x="240" y="140" width="190" height="56" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="335" y="164" text-anchor="middle" font-weight="600" fill="#18181b">MCP client</text>
+  <text x="335" y="182" text-anchor="middle" fill="#71717a" font-size="12">holds GitHub + pgwarden creds</text>
+  <rect x="450" y="140" width="190" height="56" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="545" y="164" text-anchor="middle" font-weight="600" fill="#18181b">Code Mode bridge</text>
+  <text x="545" y="182" text-anchor="middle" fill="#71717a" font-size="12">sandbox call_tool → harness</text>
+  <text x="240" y="238" fill="#71717a" font-size="12">Sessions view: turns, tool calls, sandbox runs, tokens</text>
+  <text x="240" y="256" fill="#71717a" font-size="12">require_approval_for_tools: [apply_migration]</text>
+
+  <line x1="174" y1="75" x2="238" y2="88" stroke="#c2410c" stroke-width="1.5" marker-end="url(#a)" marker-start="url(#a)"/>
+
+  <!-- credential boundary -->
+  <line x1="700" y1="20" x2="700" y2="540" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="708" y="36" fill="#dc2626" font-size="12" font-weight="600">credential boundary</text>
+
+  <!-- Sandbox -->
+  <rect x="220" y="320" width="440" height="200" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="236" y="344" font-weight="600" fill="#1e3a8a">Daytona sandbox (layer 1)</text>
+  <text x="236" y="368" fill="#1e40af">• agent-written rehearse_v1.py / rehearse_v2.py</text>
+  <text x="236" y="390" fill="#1e40af">• throwaway Postgres 16 + masked full copy (25,014 rows)</text>
+  <text x="236" y="412" fill="#1e40af">• replays app queries, checks invariants, diffs effects</text>
+  <text x="236" y="434" fill="#1e40af">• credentials inside: none</text>
+  <text x="236" y="456" fill="#1e40af">• destroyed with the session</text>
+  <line x1="545" y1="198" x2="545" y2="318" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text x="552" y="262" fill="#52525b" font-size="12">runs code / bridges calls</text>
+
+  <!-- GitHub -->
+  <rect x="730" y="50" width="206" height="90" rx="10" fill="#ffffff" stroke="#a1a1aa" stroke-width="1.5"/>
+  <text x="833" y="76" text-anchor="middle" font-weight="600" fill="#18181b">GitHub: shopkart</text>
+  <text x="833" y="96" text-anchor="middle" fill="#71717a" font-size="12">read PR + files, comment</text>
+  <text x="833" y="114" text-anchor="middle" fill="#71717a" font-size="12">no merge / push tools enabled</text>
+  <line x1="432" y1="160" x2="728" y2="100" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- pgwarden -->
+  <rect x="730" y="180" width="206" height="200" rx="10" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="833" y="206" text-anchor="middle" font-weight="600" fill="#14532d">pgwarden MCP (layer 3)</text>
+  <text x="744" y="230" fill="#166534" font-size="12">read tools (READ ONLY txn)</text>
+  <text x="744" y="250" fill="#166534" font-size="12">record_rehearsal (audit)</text>
+  <text x="744" y="270" fill="#9a3412" font-size="12" font-weight="600">apply_migration (gated)</text>
+  <text x="744" y="292" fill="#166534" font-size="12">1 refuse DROP/RENAME/…</text>
+  <text x="744" y="310" fill="#166534" font-size="12">2 rehearsal hash must match</text>
+  <text x="744" y="328" fill="#166534" font-size="12">3 run in one transaction</text>
+  <text x="744" y="346" fill="#166534" font-size="12">4 real effects = approved?</text>
+  <text x="744" y="364" fill="#166534" font-size="12">   commit, else roll back</text>
+  <line x1="432" y1="178" x2="728" y2="250" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- prod -->
+  <rect x="730" y="420" width="206" height="80" rx="10" fill="#ffffff" stroke="#a1a1aa" stroke-width="1.5"/>
+  <text x="833" y="448" text-anchor="middle" font-weight="600" fill="#18181b">Prod Postgres (Neon)</text>
+  <text x="833" y="468" text-anchor="middle" fill="#71717a" font-size="12">only pgwarden holds the URL</text>
+  <line x1="833" y1="382" x2="833" y2="418" stroke="#52525b" stroke-width="1.5" marker-end="url(#a)"/>
+</svg>

@@ -53,7 +53,13 @@ const session = (await tf('POST', '/sessions', { agent: { name: AGENT } })).data
 const link = `${TF}/`; // TrueForge UI: the run appears at the top of the agent's chat history
 log(`session ${session.id} started for ${REPO}#${PR_NUMBER}`);
 await status('pending', 'Rehearsing this migration on a masked copy of prod…', link);
-await tf('POST', `/sessions/${session.id}/turns`, { input: [{ type: 'user.message', content: prompt }] });
+// The create-turn call streams (SSE) until the turn pauses or ends, so start it in the background and
+// follow progress through the events endpoint instead.
+fetch(`${TF}/api/v1/sessions/${session.id}/turns`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+  body: JSON.stringify({ input: [{ type: 'user.message', content: prompt }] }),
+}).then((res) => { if (!res.ok) log(`! create turn → HTTP ${res.status}`); return res.body?.cancel(); }).catch((e) => log(`! create turn: ${e.message}`));
 
 // ---- follow the session ----
 const text = (e) => (typeof e.content === 'string' ? e.content : JSON.stringify(e.content ?? ''));

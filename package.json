@@ -30,5 +30,6 @@
     "@truefoundry/trueforge-sdk": "0.2.0",
     "dotenv": "^18.0.4",
     "pg": "^8.23.0"
-  }
+  },
+  "license": "MIT"
 }

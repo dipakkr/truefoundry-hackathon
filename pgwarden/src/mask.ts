@@ -64,6 +64,21 @@ export function createMasker(key: string): Masker {
 }
 
 /** Which columns get masked, and how. Everything else passes through. */
-export const MASKED_COLUMNS: Record<string, Record<string, "email" | "text">> = {
-  users: { email: "email", full_name: "text", phone: "text" },
-};
+/**
+ * Columns masked by export_table. Default is shopkart's; override per project with
+ * PGWARDEN_MASK="table.column:email|text,..." (e.g. "mcp_servers.author:text").
+ */
+export const MASKED_COLUMNS: Record<string, Record<string, "email" | "text">> = parseMaskSpec(
+  process.env.PGWARDEN_MASK ?? "users.email:email,users.full_name:text,users.phone:text",
+);
+
+function parseMaskSpec(spec: string): Record<string, Record<string, "email" | "text">> {
+  const out: Record<string, Record<string, "email" | "text">> = {};
+  for (const part of spec.split(",").map((x) => x.trim()).filter(Boolean)) {
+    const [col, kind] = part.split(":");
+    const [table, column] = col.split(".");
+    if (!table || !column || (kind !== "email" && kind !== "text")) throw new Error(`bad PGWARDEN_MASK entry "${part}"`);
+    (out[table] ??= {})[column] = kind;
+  }
+  return out;
+}

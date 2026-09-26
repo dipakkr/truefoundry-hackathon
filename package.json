@@ -5,7 +5,9 @@
   "engines": {
     "node": ">=22.14"
   },
-  "scripts": {},
+  "scripts": {
+    "seed": "tsx seed/seed.ts"
+  },
   "devDependencies": {
     "@types/node": "^26.6.2",
     "@types/pg": "^8.23.1",

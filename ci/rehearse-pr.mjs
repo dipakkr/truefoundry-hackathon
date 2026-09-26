@@ -63,6 +63,27 @@ async function status(state, description, targetUrl) {
   }
 }
 
+// ---- PRs without migration changes pass right away (the check is required for every PR) ----
+const MIGRATIONS_PATH = (process.env.MIGRATIONS_PATH || '').replace(/\/+$/, '');
+if (MIGRATIONS_PATH && GITHUB_TOKEN) {
+  const files = [];
+  for (let page = 1; page <= 10; page++) {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100&page=${page}`, {
+      headers: { authorization: `Bearer ${GITHUB_TOKEN}`, accept: 'application/vnd.github+json' },
+    }).catch(() => null);
+    if (!res?.ok) { files.length = 0; files.push(null); break; } // can't tell: rehearse to be safe
+    const batch = await res.json();
+    files.push(...batch.map((f) => f.filename));
+    if (batch.length < 100) break;
+  }
+  if (!files.includes(null) && !files.some((f) => f.startsWith(`${MIGRATIONS_PATH}/`))) {
+    log(`no files under ${MIGRATIONS_PATH}/ in this PR; nothing to rehearse`);
+    summary(`## Migration Rehearsal\n\nNo changes under \`${MIGRATIONS_PATH}/\` in ${REPO}#${PR_NUMBER}: nothing to rehearse, check passes.`);
+    await status('success', `No migration changes: nothing to rehearse`);
+    process.exit(0);
+  }
+}
+
 // ---- start ----
 const agents = await tf('GET', '/agents').catch((e) => fail(`TrueForge not reachable at ${TF}: ${e.message}`));
 if (!(agents.data || []).some((a) => a.name === AGENT)) fail(`agent "${AGENT}" is not registered in TrueForge (run npm run setup)`);

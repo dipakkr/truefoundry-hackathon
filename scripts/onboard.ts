@@ -7,7 +7,8 @@
 //   4. registers the project's pgwarden as its own MCP server in TrueForge
 //   5. registers the project's agent (same skill, approval gate on apply_migration enforced)
 //   6. opens a PR on the app repo adding .github/workflows/migration-rehearsal.yml
-//   7. checks for an online self-hosted runner with the project's label
+//   7. requires the Migration Rehearsal check on the default branch (after the workflow is merged)
+//   8. checks for an online self-hosted runner with the project's label
 // Idempotent: safe to re-run. Never prints secret values.
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -203,6 +204,27 @@ if (existing.code === 0) {
   add(pr.code === 0
     ? { step: 'ci workflow', status: 'ok', detail: `PR opened: ${pr.stdout.trim()}` }
     : { step: 'ci workflow', status: 'fail', detail: (pr.stderr || pr.stdout).slice(0, 200) });
+}
+
+// ---------- 6b. require the check before merging ----------
+const CHECK = 'Migration Rehearsal / prod data';
+const onDefault = gh(['api', `repos/${project.repo}/contents/${WF}`, '--jq', '.sha']).code === 0;
+if (!onDefault) {
+  add({ step: 'merge gate', status: 'warn', detail: 'workflow not on the default branch yet', fix: 'Merge the workflow PR, then re-run onboard to require the check.' });
+} else {
+  const branch = gh(['api', `repos/${project.repo}`, '--jq', '.default_branch']).stdout || 'main';
+  const cur = gh(['api', `repos/${project.repo}/branches/${branch}/protection/required_status_checks`, '--jq', '.contexts | join(",")']);
+  if (cur.code === 0 && cur.stdout.split(',').includes(CHECK)) {
+    add({ step: 'merge gate', status: 'ok', detail: `"${CHECK}" already required on ${branch}` });
+  } else {
+    const r2 = cur.code === 0
+      ? gh(['api', '-X', 'POST', `repos/${project.repo}/branches/${branch}/protection/required_status_checks/contexts`, '-f', `contexts[]=${CHECK}`])
+      : gh(['api', '-X', 'PUT', `repos/${project.repo}/branches/${branch}/protection`, '-F', 'required_status_checks[strict]=false', '-f', `required_status_checks[contexts][]=${CHECK}`,
+          '-F', 'enforce_admins=true', '-F', 'required_pull_request_reviews=null', '-F', 'restrictions=null']);
+    add(r2.code === 0
+      ? { step: 'merge gate', status: 'ok', detail: `PRs into ${branch} need "${CHECK}" to pass (admins included)` }
+      : { step: 'merge gate', status: 'warn', detail: (r2.stderr || r2.stdout).slice(0, 160), fix: `Require "${CHECK}" in the repo's branch protection settings.` });
+  }
 }
 
 // ---------- 7. runner ----------

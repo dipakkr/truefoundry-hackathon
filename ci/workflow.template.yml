@@ -1,4 +1,5 @@
-# Runs Migration Rehearsal (an agent on TrueForge) on every PR that changes a migration.
+# Runs Migration Rehearsal (an agent on TrueForge) on every PR. PRs that change a migration are rehearsed on a
+# masked copy of prod; other PRs pass in seconds. `npm run onboard` makes this check required on the default branch.
 # Installed by `npm run onboard` from dipakkr/truefoundry-hackathon for project "{{PROJECT}}".
 # The job runs on a self-hosted runner next to TrueForge, so TrueForge is never exposed to the internet.
 # The human approval for applying to prod stays in TrueForge's UI; this job mirrors progress as a PR status.
@@ -7,7 +8,6 @@ name: Migration Rehearsal
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths: ['{{MIGRATIONS_PATH}}/**']
   workflow_dispatch:
     inputs:
       pr:
@@ -55,6 +55,7 @@ jobs:
       - name: Rehearse on prod data (TrueForge)
         env:
           AGENT: {{AGENT}}
+          MIGRATIONS_PATH: {{MIGRATIONS_PATH}}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.n }}
           HEAD_SHA: ${{ steps.pr.outputs.sha }}

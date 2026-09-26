@@ -13,6 +13,8 @@ export interface Deps {
   pool: Pool;
   masker: Masker;
   log?: (line: string) => void;
+  /** Append-only tables for this project (PGWARDEN_PROTECT). */
+  protectedTables?: string[];
 }
 
 const ok = (data: unknown): CallToolResult => ({ content: [{ type: "text", text: JSON.stringify(data) }] });
@@ -137,7 +139,7 @@ export function buildServer(deps: Deps): McpServer {
     },
     (args) =>
       run("apply_migration", async () => {
-        const data = await applyMigration(deps.pool, args);
+        const data = await applyMigration(deps.pool, args, { protectedTables: deps.protectedTables });
         return { data, outcome: `committed:${data.applied_version}` };
       })(),
   );

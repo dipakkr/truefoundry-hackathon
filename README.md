@@ -50,7 +50,7 @@ Threat model and every refusal code: [SAFETY.md](SAFETY.md). Edge cases compared
 **TrueForge, where the agent runs.** A CI-triggered session of `migration-rehearsal-ledgerly`, paused at the one irreversible step. The run can't continue until a human clicks **Allow** or **Deny**:
 ![TrueForge approval card: apply_migration awaiting a human, Allow / Deny](docs/images/trueforge-approval.png)
 
-After **Allow**, the agent reports the verified outcome in the same TrueForge session: migration 0007 committed, row counts unchanged, and the planted fake rehearsal reports flagged as an injection attempt:
+After **Allow**, the agent reports the verified outcome in the same TrueForge session: migration 0007 committed, row counts unchanged, and earlier rehearsal reports in the PR comments treated as untrusted and flagged as a possible injection:
 ![TrueForge session after approval: applied and verified](docs/images/trueforge-result.png)
 
 **The app.** [ledgerly](https://github.com/dipakkr/ledgerly), a UPI payments ledger with a live ops dashboard (30,055 payments, 427 refunds, 18 double charges).

@@ -1,0 +1,99 @@
+{
+  "description": "Single source of truth for the effects format (CONTRACTS.md section 7). pgwarden (TypeScript) and skills/migration-rehearsal/scripts/effects.py (Python) must both produce `expected` from `before` and `after` for every case.",
+  "rules": [
+    "Facts cover schema `public` only. The table `schema_migrations` is excluded from facts entirely.",
+    "row_deltas: one key per table present in before OR after; value = after.row_count - before.row_count, where a missing table counts as 0. Zero deltas are included.",
+    "A table only in `after` yields `+table:<t>`; only in `before` yields `-table:<t>`. No column/index/constraint entries are emitted for added or dropped tables.",
+    "For tables in both: `+column:<t>.<c>`, `-column:<t>.<c>`, `~column:<t>.<c>:<old_type>-><new_type>` when the type changes, `~nullable:<t>.<c>:<old>-><new>` when nullability changes.",
+    "Indexes and constraints are compared by name: `+index:<t>.<name>`, `-index:<t>.<name>`, `+constraint:<t>.<name>`, `-constraint:<t>.<name>`.",
+    "schema_changes is sorted ascending by plain string comparison (code-point order). Consumers compare it as a set."
+  ],
+  "base": {
+    "tables": {
+      "users": {
+        "row_count": 5014,
+        "columns": {
+          "id": {"type": "bigint", "nullable": false},
+          "email": {"type": "text", "nullable": false},
+          "full_name": {"type": "text", "nullable": false},
+          "phone": {"type": "text", "nullable": true},
+          "city": {"type": "text", "nullable": true},
+          "created_at": {"type": "timestamp with time zone", "nullable": false}
+        },
+        "indexes": ["users_pkey"],
+        "constraints": ["users_pkey"]
+      },
+      "orders": {
+        "row_count": 20000,
+        "columns": {
+          "id": {"type": "bigint", "nullable": false},
+          "user_id": {"type": "bigint", "nullable": false},
+          "amount_paise": {"type": "integer", "nullable": false},
+          "status": {"type": "text", "nullable": false},
+          "created_at": {"type": "timestamp with time zone", "nullable": false}
+        },
+        "indexes": ["orders_pkey", "orders_user_id_idx"],
+        "constraints": ["orders_amount_paise_check", "orders_pkey", "orders_user_id_fkey"]
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "no-op",
+      "before": "base",
+      "patch": [],
+      "expected": {"row_deltas": {"orders": 0, "users": 0}, "schema_changes": []}
+    },
+    {
+      "name": "add unique index",
+      "before": "base",
+      "patch": [{"op": "add_index", "table": "users", "name": "users_email_lower_uniq"}],
+      "expected": {"row_deltas": {"orders": 0, "users": 0}, "schema_changes": ["+index:users.users_email_lower_uniq"]}
+    },
+    {
+      "name": "add column",
+      "before": "base",
+      "patch": [{"op": "add_column", "table": "users", "column": "mobile", "type": "text", "nullable": true}],
+      "expected": {"row_deltas": {"orders": 0, "users": 0}, "schema_changes": ["+column:users.mobile"]}
+    },
+    {
+      "name": "rename column",
+      "before": "base",
+      "patch": [{"op": "rename_column", "table": "users", "from": "phone", "to": "mobile"}],
+      "expected": {"row_deltas": {"orders": 0, "users": 0}, "schema_changes": ["+column:users.mobile", "-column:users.phone"]}
+    },
+    {
+      "name": "dedupe rows, index, add column",
+      "before": "base",
+      "patch": [
+        {"op": "set_rows", "table": "users", "row_count": 4990},
+        {"op": "add_index", "table": "users", "name": "users_email_lower_uniq"},
+        {"op": "add_column", "table": "users", "column": "mobile", "type": "text", "nullable": true}
+      ],
+      "expected": {"row_deltas": {"orders": 0, "users": -24}, "schema_changes": ["+column:users.mobile", "+index:users.users_email_lower_uniq"]}
+    },
+    {
+      "name": "drop table orders",
+      "before": "base",
+      "patch": [{"op": "drop_table", "table": "orders"}],
+      "expected": {"row_deltas": {"orders": -20000, "users": 0}, "schema_changes": ["-table:orders"]}
+    },
+    {
+      "name": "type and nullability change",
+      "before": "base",
+      "patch": [
+        {"op": "alter_column", "table": "orders", "column": "amount_paise", "type": "bigint"},
+        {"op": "alter_column", "table": "users", "column": "city", "nullable": false}
+      ],
+      "expected": {"row_deltas": {"orders": 0, "users": 0}, "schema_changes": ["~column:orders.amount_paise:integer->bigint", "~nullable:users.city:true->false"]}
+    }
+  ],
+  "patch_ops": {
+    "set_rows": "after.tables[table].row_count = row_count",
+    "add_index": "append name to after.tables[table].indexes",
+    "add_column": "after.tables[table].columns[column] = {type, nullable}",
+    "rename_column": "move after.tables[table].columns[from] to columns[to]",
+    "drop_table": "delete after.tables[table]",
+    "alter_column": "update type and/or nullable of after.tables[table].columns[column]"
+  }
+}

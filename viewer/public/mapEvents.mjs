@@ -76,8 +76,8 @@ export function classifyToolCall(tc) {
   return { kind: "TOOL", system: null, server, tool: name, display: server ? `${server}.${name}` : name, args };
 }
 
-/** pgwarden MCP servers: "pgwarden" for the first project, "pgwarden_<project>" for each onboarded one. */
-export const isPgwarden = (server) => typeof server === "string" && /^pgwarden(_|$)/.test(server);
+/** pgwarden MCP servers: "pgwarden" for the first project, "pgwarden-<project>" for each onboarded one. */
+export const isPgwarden = (server) => typeof server === "string" && /^pgwarden(-|$)/.test(server);
 
 /** A RehearsalReport (CONTRACTS.md §8) has version, verdict and steps[]. */
 export function isRehearsalReport(v) {

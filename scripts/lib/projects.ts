@@ -44,7 +44,7 @@ export function newProject(name: string, repo: string, opts: Partial<Project> = 
     queries_path: opts.queries_path ?? 'src/queries',
     database_url_env: opts.database_url_env ?? `${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_DATABASE_URL`,
     mask: opts.mask ?? '',
-    pgwarden: { port: Math.max(8787, ...ports) + 1, mcp_name: `pgwarden_${name.replace(/[^a-z0-9]/gi, '_')}` },
+    pgwarden: { port: Math.max(8787, ...ports) + 1, mcp_name: `pgwarden-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` },
     agent: `migration-rehearsal-${name}`,
     runner_label: 'migration-rehearsal',
   };

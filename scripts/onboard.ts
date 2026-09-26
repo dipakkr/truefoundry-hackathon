@@ -65,7 +65,7 @@ try {
   // ---------- 3. PII scan ----------
   const NAME_HINTS: Array<[RegExp, 'email' | 'text']> = [
     [/(^|_)(email|e_mail|upi|upi_id|vpa)$/i, 'email'],
-    [/(^|_)(phone|mobile|msisdn|full_name|first_name|last_name|name|pan|aadhaar|ssn|address|dob|date_of_birth|card_number|account_number|ifsc)$/i, 'text'],
+    [/(^|_)(phone|mobile|msisdn|full_name|first_name|last_name|customer_name|pan|aadhaar|ssn|address|dob|date_of_birth|card_number|account_number|ifsc)$/i, 'text'],
   ];
   const VALUE_HINTS: Array<[RegExp, 'email' | 'text', string]> = [
     [/^[\w.+-]+@[\w-]+(\.[\w.-]+)?$/, 'email', 'email / UPI id'],

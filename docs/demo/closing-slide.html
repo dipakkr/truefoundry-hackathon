@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Migration Rehearsal · closing slide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root{--ink:#0A0A0B;--mut:#52525B;--line:#E4E4E7;--sub:#F8F8F9;--ok:#15803D;--gate:#C2410C;--bad:#B91C1C;--blue:#1D4ED8}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#fff;color:var(--ink);font-family:Geist,ui-sans-serif,system-ui,sans-serif}
+  .slide{width:100vw;height:100vh;padding:4vh 4vw;display:grid;grid-template-rows:auto 1fr auto;gap:3vh}
+  h1{margin:0;font-size:4.2vh;font-weight:600;letter-spacing:-.02em}
+  h1 span{color:var(--mut);font-weight:400}
+  .body{display:grid;grid-template-columns:1.25fr 1fr;gap:3vw;min-height:0}
+  .arch{border:1px solid var(--line);border-radius:12px;padding:1.5vh;display:grid;place-items:center;min-height:0}
+  .arch img{max-width:100%;max-height:100%}
+  .right{display:grid;gap:2.4vh;align-content:start}
+  .layers{display:grid;gap:1.2vh}
+  .layer{display:grid;grid-template-columns:4vh 1fr;gap:1vw;align-items:start;font-size:2.1vh;line-height:1.35}
+  .layer b{display:grid;place-items:center;height:4vh;border-radius:8px;color:#fff;font-size:2vh}
+  .l1 b{background:var(--blue)} .l2 b{background:var(--gate)} .l3 b{background:var(--ok)}
+  .layer div span{display:block;color:var(--mut);font-size:1.8vh}
+  table{border-collapse:collapse;width:100%;font-size:1.75vh}
+  th,td{border:1px solid var(--line);padding:.9vh .8vw;text-align:left;vertical-align:top}
+  th{background:var(--sub);font-weight:600}
+  th:nth-child(2){color:var(--gate)} th:nth-child(3){color:var(--bad)}
+  code{font-family:"Geist Mono",ui-monospace,monospace;font-size:.95em}
+  .foot{display:flex;gap:3vw;flex-wrap:wrap;font-family:"Geist Mono",ui-monospace,monospace;font-size:2vh;color:var(--mut);border-top:1px solid var(--line);padding-top:2vh}
+  .foot b{color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+<section class="slide">
+  <h1>Migration Rehearsal <span>· the agent tests on real data, a human makes the one irreversible call</span></h1>
+  <div class="body">
+    <div class="arch"><img src="../architecture.svg" alt="Architecture: TrueForge harness, Daytona sandbox without credentials, pgwarden MCP gate in front of prod Postgres"></div>
+    <div class="right">
+      <div class="layers">
+        <div class="layer l1"><b>1</b><div>Sandbox with no credentials<span>Agent-written code runs on a masked full copy. Worst case: a wrecked copy.</span></div></div>
+        <div class="layer l2"><b>2</b><div>A human gate on the one irreversible act<span><code>apply_migration</code> waits for Allow / Deny in TrueForge.</span></div></div>
+        <div class="layer l3"><b>3</b><div>A server that verifies<span>Commits only if real effects = what was approved. Some SQL is refused even when approved.</span></div></div>
+      </div>
+      <table>
+        <thead><tr><th>Autonomous</th><th>Needs a human</th><th>Never, even with approval</th></tr></thead>
+        <tbody><tr>
+          <td>Reads, sandbox work, rehearsal record, PR comment</td>
+          <td><code>apply_migration</code></td>
+          <td>DROP TABLE, TRUNCATE, DROP / RENAME COLUMN, GRANT / REVOKE, DELETE without WHERE, SET, DO, merge / push</td>
+        </tr></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="foot">
+    <span><b id="rel">10/10</b> live e2e runs pass</span>
+    <span><b id="lat">~3 min</b> to the approval card</span>
+    <span><b id="cost">≈ $0.35</b> per run</span>
+    <span><b>25,014</b> rows rehearsed</span>
+    <span><b>0</b> competitors test on real data</span>
+  </div>
+</section>
+</body>
+</html>

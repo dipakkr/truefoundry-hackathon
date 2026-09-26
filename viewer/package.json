@@ -1,0 +1,11 @@
+{
+  "name": "migration-rehearsal-viewer",
+  "private": true,
+  "type": "module",
+  "description": "Read-only Langfuse-style trace viewer for TrueForge sessions of the migration-rehearsal agent",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "fixture": "node fixtures/make-sample-session.mjs"
+  }
+}

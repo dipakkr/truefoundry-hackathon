@@ -1,0 +1,11 @@
+{
+  "name": "shopkart",
+  "repo": "dipakkr/shopkart",
+  "migrations_path": "migrations",
+  "queries_path": "src/queries",
+  "database_url_env": "DATABASE_URL",
+  "mask": "users.email:email,users.full_name:text,users.phone:text",
+  "pgwarden": { "port": 8787, "mcp_name": "pgwarden" },
+  "agent": "migration-rehearsal",
+  "runner_label": "migration-rehearsal"
+}

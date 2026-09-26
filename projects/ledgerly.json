@@ -1,0 +1,14 @@
+{
+  "name": "ledgerly",
+  "repo": "dipakkr/ledgerly",
+  "migrations_path": "migrations",
+  "queries_path": "src/queries",
+  "database_url_env": "LEDGERLY_DATABASE_URL",
+  "mask": "customers.full_name:text,customers.email:email,customers.phone:text,customers.upi_id:email,customers.pan:text",
+  "pgwarden": {
+    "port": 8788,
+    "mcp_name": "pgwarden-ledgerly"
+  },
+  "agent": "migration-rehearsal-ledgerly",
+  "runner_label": "migration-rehearsal"
+}

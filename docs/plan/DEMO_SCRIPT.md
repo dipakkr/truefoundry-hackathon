@@ -1,6 +1,6 @@
 # Demo Script: 5:00 hard limit (target 4:45)
 
-> What judges score: **the harness doing the work**, **catching edge cases**, and **a complete, integrated system**. This script shows all three, in that order of weight, while the live agent run (median 3:08 to the approval card) happens in the background of everything else.
+> What judges score: **the harness doing the work**, **catching edge cases**, and **a complete, integrated system**. This script shows all three, in that order of weight, while the live agent run (median 2:43 to the approval card on the final version) happens in the background of everything else.
 >
 > Flow: **GitHub CI starts it → TrueForge runs it live → guardrails attacked while it works → judge denies → GitHub PR flips to ❌.**
 
@@ -81,7 +81,7 @@ gh workflow run migration-rehearsal.yml -R dipakkr/shopkart -f pr=1
 ### 4:35–4:50 · Close
 **Driver:** tab 5 (slide).
 **Narrator:**
-> "Three layers: a sandbox with no credentials, a human gate on the one irreversible step, and a server that verifies what actually happened. Ten out of ten live runs today. Clone it; the README gets you there. Questions?"
+> "Three layers: a sandbox with no credentials, a human gate on the one irreversible step, and a server that verifies what actually happened. Thirteen out of thirteen live runs today. Clone it; the README gets you there. Questions?"
 
 ---
 
